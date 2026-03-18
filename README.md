@@ -233,10 +233,6 @@ MIT License
 - NetSPI - MicroBurst
 - 以及所有开源工具的贡献者
 
-## 📞 联系方式
-
-- 项目主页: https://github.com/your-repo/cloud-pentest-framework
-- 问题反馈: https://github.com/your-repo/cloud-pentest-framework/issues
 
 ---
 
