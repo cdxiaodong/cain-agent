@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
-    # claude-agent-sdk 将在 Phase 1 接入执行引擎时引入
+    "claude-agent-sdk>=0.2.0",
 ]
 
 [project.optional-dependencies]
