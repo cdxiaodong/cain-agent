@@ -10,13 +10,13 @@
 - [x] 新 README(实战定位 + 法律声明)
 - [x] Python 骨架:pyproject + src/cain_agent + tests + CI(ruff/pyright/pytest)
 - [x] git 署名配置(cdxiaodong + noreply 邮箱)
-- [ ] GitHub 仓库 topics/description/homepage 补全
-- [ ] 旧仓库内容归档整理(65 个云技能保留,文档去占位符)
+- [x] GitHub 仓库 topics/description/homepage 补全(2026-08-03 晚 gh 应用 12 topics + description,homepage 按建议留空)
+- [x] 旧仓库内容归档整理(66 个云技能保留,盘点见 docs/legacy-inventory.md;exploits/install-tools 待重构项已排入后续 Phase)
 
 ## Phase 1 · MVP(2026.09-10)
 
-- [ ] SDKExecutor 最小封装(Claude Agent SDK + allowed_tools + Hook 注册)
-- [ ] scope.yaml + ScopeGuardHook(第一个 Hook,安全先行)
+- [x] SDKExecutor 最小封装(Claude Agent SDK + allowed_tools + Hook 注册)(2026-08-03,core 分支合入)
+- [x] scope.yaml + ScopeGuardHook(第一个 Hook,安全先行)(2026-08-03,feat 分支合入)
 - [ ] Orchestrator 状态机:recon → test → report 最小闭环
 - [ ] 3 个核心 Web skill:SQLi / XSS / SSRF
 - [ ] 云模块起步:阿里云 OSS 暴露检测
