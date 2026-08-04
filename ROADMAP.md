@@ -17,10 +17,10 @@
 
 - [x] SDKExecutor 最小封装(Claude Agent SDK + allowed_tools + Hook 注册)(2026-08-03,core 分支合入)
 - [x] scope.yaml + ScopeGuardHook(第一个 Hook,安全先行)(2026-08-03,feat 分支合入)
-- [ ] Orchestrator 状态机:recon → test → report 最小闭环
-- [ ] 3 个核心 Web skill:SQLi / XSS / SSRF
-- [ ] 云模块起步:阿里云 OSS 暴露检测
-- [ ] Workspace 外置记忆(assets.json / findings.json)
+- [x] Orchestrator 状态机:recon → test → report 最小闭环(2026-08-04,core 分支合入,含 Workspace 外置记忆)
+- [x] 3 个核心 Web skill:SQLi / XSS / SSRF(2026-08-04,test 分支合入,含格式校验)
+- [x] 云模块起步:阿里云 OSS 暴露检测(2026-08-04,feat 分支合入)
+- [x] Workspace 外置记忆(assets.json / findings.json)(2026-08-04,随 Orchestrator 落地)
 - [ ] Docker 一键运行 + 3 分钟演示视频
 
 ## Phase 2 · 校验闭环(2026.11-12)

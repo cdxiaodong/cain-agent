@@ -1,5 +1,15 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-04 · 晚 · Day 2 验收:三分支全过合入,派活通道打通
+
+**验收结论:任务 1/2/3 全部通过(CI 三绿 + 署名正确 + 红线/凭证扫描干净),已合并 main 并推送,main 上 115 测试全绿。**
+
+- **Orchestrator + Workspace**(`c3c5f82`,core 分支):阶段流转硬编码 recon→test→report(乱序抛 StageOrderError,有测试钉死)、Workspace 原子写 assets/findings、state.json 阶段追溯、ScopeGuardHook 从 workspace 真源构造并挂到 executor(只组合不改语义);executor.py/scope.py 零改动
+- **阿里云 OSS 暴露检测**(`6146d30`,feat 分支):OssExposureChecker 只读检查 ACL/Policy,定级规则代码常量(公开可写=critical/公开读=high/private=info),单 bucket 失败容错;23 个全 mock 单测,零触网零真实凭证,无 AK 硬编码
+- **Web 三技能 + 格式校验**(test 分支):SQLi/XSS/SSRF 实战向 SKILL.md(SSRF 含 AWS/阿里云/GCP/Azure 元数据端点)、test_skill_format.py(新技能严格四字段四节、旧 66 技能兼容)、技能编写规范
+- **派活通道突破**:SendMessage 对定时场景不可用(成员不在注册表),改用「一次性 cron 唤醒」通道(cron current create + sqlite3 改指目标会话)实测成功,三个工程师会话 faa9204d/15470647/31d15820 全部收到并回执——后续派活送达走此通道
+- 通道测试顺带确认 Codex-A/B 上午已完工;done-codex-a/b.md 汇报文件留存仓库根
+
 ## 2026-08-04 · 早 · 派活已发,团队消息通道未通(待用户处理)
 
 - 派活单 `tasks/2026-08-04.md` 已提交推送(`7b87577`):任务 1 Orchestrator 状态机+Workspace(Claude 主力,`core/2026-08-04-orchestrator`)、任务 2 阿里云 OSS 暴露检测(Codex-A,`feat/2026-08-04-aliyun-oss-exposure`)、任务 3 Web 三技能 SKILL.md+格式校验(Codex-B,`test/2026-08-04-web-skills`)
