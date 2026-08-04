@@ -1,5 +1,12 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-04 · 早 · 派活已发,团队消息通道未通(待用户处理)
+
+- 派活单 `tasks/2026-08-04.md` 已提交推送(`7b87577`):任务 1 Orchestrator 状态机+Workspace(Claude 主力,`core/2026-08-04-orchestrator`)、任务 2 阿里云 OSS 暴露检测(Codex-A,`feat/2026-08-04-aliyun-oss-exposure`)、任务 3 Web 三技能 SKILL.md+格式校验(Codex-B,`test/2026-08-04-web-skills`)
+- ⚠️ **消息送达失败**:按要求用团队消息工具逐一发送三个成员,`Claude 主力工程师` / `Codex-A` / `codex-a` / `Codex-B` / `codex-b` 全部返回"agent 不可达"——本会话的团队注册表中没有这些成员,无法确认任何一方已开工
+- 后果与昨日相同的风险:若 Codex 两侧没有独立的定时触发去读 tasks/ 文件,今天将再次空转。**需要用户确认 AionUi team 模式中 Codex-A/B 的唤醒方式**(独立 cron 读 tasks/ 文件,或提供可达的 agent 名称/通道)
+- 21:00 验收时将先检查分支是否存在,再据此判断成员是否实际开工
+
 ## 2026-08-03 · 晚 · Phase 0 收官 + Phase 1 前两件落地
 
 **验收结论:三分支全部通过(CI 三绿 + 署名正确 + 红线扫描干净),已合并 main 并推送。**
