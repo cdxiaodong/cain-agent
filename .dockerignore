@@ -1,0 +1,44 @@
+# VCS / 构建缓存
+.git
+.gitignore
+.github
+
+# Python 虚拟环境与缓存
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# 测试与文档(运行时不需要)
+tests/
+docs/
+
+# 技能知识库(按需挂载,不进镜像)
+skills/
+
+# 旧资产归档
+docs/legacy/
+
+# 派活与汇报文件
+tasks/
+done-*.md
+AGENTS.md
+SKILL.md
+
+# IDE / 系统文件
+.vscode
+.idea
+.DS_Store
+
+# CI / 其他
+Dockerfile
+.dockerignore
+.claude
+.codex
+.agents
