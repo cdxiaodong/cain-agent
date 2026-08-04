@@ -1,0 +1,64 @@
+# 本地回归靶场 —— 仅用于本地授权回归测试
+#
+# 红线:
+#   - 仅供本项目 cain-agent 的 Web 三技能(SQLi/XSS/SSRF)在本地做工程回归,
+#     所有端口仅绑定 127.0.0.1,严禁对外网/局域网暴露。
+#   - 靶标为故意带漏洞的开源训练靶场(Juice Shop / DVWA),不得接入生产网络、
+#     不得作为真实目标;实战验证走合法授权渠道(见 docs/benchmark-plan.md 第二层)。
+#   - 使用官方镜像,不构建自定义镜像,不挂载宿主敏感目录。
+#
+# 用法:
+#   cd bench
+#   docker-compose up -d
+#   浏览器访问 http://127.0.0.1:3000  (Juice Shop,开箱即用)
+#   浏览器访问 http://127.0.0.1:8080  (DVWA,首次需访问 /setup.php 点击 Setup)
+#
+# 销毁:
+#   docker-compose down -v
+
+
+services:
+  juice-shop:
+    # OWASP Juice Shop:SQLi / XSS / 访问控制等综合漏洞面,Node 单镜像开箱即用
+    image: bkimminich/juice-shop:latest
+    container_name: cain-bench-juice-shop
+    ports:
+      # 仅绑定回环地址,严禁暴露到局域网
+      - "127.0.0.1:3000:3000"
+    environment:
+      # 关闭维护公告等外部抓取,纯本地运行
+      NODE_ENV: production
+    restart: unless-stopped
+    healthcheck:
+      # 镜像内置 Node,用 http 模块探活(不依赖 curl/wget)
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    # 不挂载任何宿主目录;数据仅留容器内,down -v 即清
+    volumes: []
+
+  dvwa:
+    # DVWA(Damn Vulnerable Web App):经典 PHP 漏洞面,SQLi/XSS/命令注入/文件上传等
+    # 官方社区镜像,单容器内置 Apache+PHP+MariaDB,首次需 /setup.php 初始化数据库
+    image: vulnerables/web-dvwa:latest
+    container_name: cain-bench-dvwa
+    ports:
+      # 仅绑定回环地址;host 用 8080 避免占用特权端口 80
+      - "127.0.0.1:8080:80"
+    restart: unless-stopped
+    healthcheck:
+      # 探测登录页是否就绪(setup 前登录页即存在,可反映 Apache/PHP 起来)
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/login.php || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes: []
