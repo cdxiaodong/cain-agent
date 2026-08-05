@@ -21,12 +21,12 @@
 - [x] 3 个核心 Web skill:SQLi / XSS / SSRF(2026-08-04,test 分支合入,含格式校验)
 - [x] 云模块起步:阿里云 OSS 暴露检测(2026-08-04,feat 分支合入)
 - [x] Workspace 外置记忆(assets.json / findings.json)(2026-08-04,随 Orchestrator 落地)
-- [ ] Docker 一键运行 + 3 分钟演示视频
+- [x] Docker 一键运行 + 3 分钟演示视频(Docker 镜像 2026-08-05 合入;演示视频待人工录屏)
 
 ## Phase 2 · 校验闭环(2026.11-12)
 
-- [ ] 校验 Agent 分离 + 4 状态结构化输出
-- [ ] 指纹去重 + 定级规则表
+- [ ] 校验 Agent 分离 + 4 状态结构化输出(数据模型已落地,执行层 Day 4 开工)
+- [x] 指纹去重 + 定级规则表(2026-08-05,findings.py 合入)
 - [ ] 云模块:RAM 提权路径分析
 - [ ] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark
 - [ ] 第一篇传播文章("首个懂国产云的实战 AI 渗透 Agent")

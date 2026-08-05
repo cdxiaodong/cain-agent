@@ -1,5 +1,14 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-05 · Day 3 验收补录(Lead 补记)
+
+> Day 3 验收会话于真实时间 08-04 15:22 合入了三个分支,但漏写本记录与 ROADMAP 勾选,由 Lead 在 Day 4 派活时补录。
+
+- **Finding 校验三件套**(`findings.py`,core/2026-08-05-finding-validator):4 状态枚举、evidence sha256 只哈希不落明文、四元组指纹归一化去重、定级规则表(模型建议降级取低);36 个单测钉死
+- **Docker 一键运行**(feat/2026-08-05-docker):Dockerfile 非 root 用户 + .dockerignore + 静态配置测试 + docs/docker.md
+- **Benchmark 靶场体系**(test/2026-08-05-bench-range):Juice Shop+DVWA compose(127.0.0.1 绑定)+ 两层评测方案文档(检出/误报/耗时/token 四指标口径)
+- ROADMAP 勾选已同步:Phase 1 全清(演示视频除外,需人工)、Phase 2「指纹去重+定级规则表」完成
+
 ## 2026-08-04 · 晚 · Day 2 验收:三分支全过合入,派活通道打通
 
 **验收结论:任务 1/2/3 全部通过(CI 三绿 + 署名正确 + 红线/凭证扫描干净),已合并 main 并推送,main 上 115 测试全绿。**
