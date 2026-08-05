@@ -107,3 +107,33 @@ docker-compose down -v   # 用完即清,数据不落宿主
 - 不实现评测执行脚本(引擎跑靶场是后续任务,本方案只定口径与靶标配置)。
 - 不启动真实扫描、不触网。
 - 不对外发布未经厂商同意的实战细节。
+
+---
+
+## 自建云靶场(国产云差异化)
+
+> 国产云漏洞靶场全网空白,是本项目的独立传播点(DESIGN §3.5)。第一层靶场回归除本地 compose(Web 端)外,补充自建云靶场覆盖国产云误配置场景,与云检测模块逐模块呼应。
+
+### 已落地:场景一 · 阿里云 OSS 公开桶
+
+- 位置:`bench/aliyun-vuln-tf/`(Terraform 配置,严禁 `terraform apply` 进入 CI)。
+- 资源:1 个 `public-read` OSS 桶(靶标)+ 1 个 `private` OSS 桶(对照)。
+- 验证对象:`cloud/aliyun_oss.py` OSS 暴露检测模块。
+- 用法:`apply → 用检测模块跑 verify → destroy`(详见 `bench/aliyun-vuln-tf/README.md`)。
+- 预期:`public-read` 桶 → `high`(暴露);`private` 桶 → `info`(正确配置,不应误报)。
+
+### 与第一层四指标的关系
+
+- 自建云靶场的 ground truth 由 outputs.tf 明确定义(每桶预期 severity),检出率/误报率按上文四指标口径统计。
+- 云靶场**仅人工/本地手动跑**,不进 CI(避免真实云凭证与费用);回归方式:本地 apply 后跑检测模块,把结果与 outputs.tf 预期比对,记入 `bench/results/`。
+
+### 红线
+
+- **仅自有账号授权测试**:apply 在自有阿里云测试账号内,**apply 后必须当天 destroy**,严禁长期留存 public-read 桶造成数据泄露。
+- **凭证走环境变量**:`ALICLOUD_ACCESS_KEY` / `ALICLOUD_SECRET_KEY`,严禁写 tfvars 提交进仓库;测试 `test_no_hardcoded_access_key` 扫描疑似真实 AK(LTAI + 长串)与 tfvars 文件。
+- **配置静态校验进 CI,apply 不进 CI**:`tests/test_vuln_tf.py` 只做结构检查,`terraform init/apply` 一律本地手动执行。
+
+### 后续场景(路线图,不在本任务范围)
+
+- 场景二:阿里云 RAM 误配置(与 Codex-A 的 RAM 提权路径分析模块呼应)。
+- 场景三:FC 环境变量密钥、元数据端点 SSRF 等——逐步补齐国产云覆盖面。
