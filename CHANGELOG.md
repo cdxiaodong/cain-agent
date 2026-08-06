@@ -1,5 +1,14 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-06 · Day 4 验收:三分支全过合入,校验闭环成型
+
+**验收结论:任务 1/2/3 全部通过(CI 三绿 + 署名正确 + 红线/凭证/tfstate 扫描干净),已合并 main 并推送,main 上 222 测试全绿(1 个 skip 为 terraform fmt 可选检查)。**
+
+- **FindingValidator 校验执行层**(`35d3a15`,core 分支):校验用独立 SDKExecutor session,与发现 executor 同对象直接 raise(防自证硬约束);证据包裹 `[UNTRUSTED_DATA]` 标记;SDK 返回乱码→validation_system_error 不猜;模型 severity 建议必须过规则表收口;19 个 fake-executor 单测零 token
+- **阿里云 RAM 提权路径分析**(`c7722f1`,feat 分支):只读 Get/List API,5+ 条提权规则代码常量(PassRole 借高权角色/AttachPolicyToSelf/CreateAccessKey/LoginProfile 劫持/AssumeRole 链),支持 `ram:*` 通配展开,管理员策略直判 critical,单实体失败容错;finding 字段对齐 findings.py 模型
+- **vuln-terraform 靶场场景一**(`958da03`,test 分支):OSS public-read 靶标桶 + private 对照桶 + Purpose 标签 + 头五行授权声明;静态测试钉死靶标语义与 LTAI 扫描;benchmark-plan 追加自建云靶场一节;未执行任何 terraform apply
+- Phase 2 进度:校验闭环(数据模型+执行层)与云模块第二件(RAM 提权)落地,剩 vuln-tf 靶场扩场景 + 首轮 benchmark + 传播文章
+
 ## 2026-08-05 · Day 3 验收补录(Lead 补记)
 
 > Day 3 验收会话于真实时间 08-04 15:22 合入了三个分支,但漏写本记录与 ROADMAP 勾选,由 Lead 在 Day 4 派活时补录。

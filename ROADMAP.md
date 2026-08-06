@@ -25,10 +25,10 @@
 
 ## Phase 2 · 校验闭环(2026.11-12)
 
-- [ ] 校验 Agent 分离 + 4 状态结构化输出(数据模型已落地,执行层 Day 4 开工)
+- [x] 校验 Agent 分离 + 4 状态结构化输出(2026-08-06,FindingValidator 执行层合入,独立 session 防自证)
 - [x] 指纹去重 + 定级规则表(2026-08-05,findings.py 合入)
-- [ ] 云模块:RAM 提权路径分析
-- [ ] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark
+- [x] 云模块:RAM 提权路径分析(2026-08-06,aliyun_ram.py 合入)
+- [ ] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark(场景一 OSS 公开桶已就位,待扩场景+首轮跑分)
 - [ ] 第一篇传播文章("首个懂国产云的实战 AI 渗透 Agent")
 
 ## Phase 3 · 扩能+传播(2027.01-04)
