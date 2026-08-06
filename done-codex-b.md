@@ -1,53 +1,62 @@
-# Codex-B 交付汇报 · 2026-08-06(Day 4 · 任务 3)
+# Codex-B 交付汇报 · 2026-08-07(Day 5 · 任务 3)
 
-> 任务:阿里云 vulnerable-terraform 自建靶场 · 场景一(OSS 公开桶)
-> 状态:**完成,三绿通过,未执行任何 terraform init/apply,待 21:00 验收**
+> 任务:阿里云 vulnerable-terraform 自建靶场 · **场景二(RAM 过度授权用户)**——为 Day 4 合入的 RAM 提权路径分析模块(`cloud/aliyun_ram.py`)提供端到端回归靶标
+> 状态:**完成,ruff / pyright / pytest 三绿;全程未执行任何 terraform init / apply;待 21:00 验收**
 
 ## 分支
 
-`test/2026-08-06-vuln-terraform`(从 main@dc5958f 切出,**未碰 main**)
+`test/2026-08-07-vuln-tf-ram`(从 `main@8578553` 切出,**未碰 main**),独立 worktree 隔离开发避免并发碰撞。
 
-## 改动文件清单(4 个新文件 + 1 追加,3 提交,均署名 cdxiaodong <84082748+cdxiaodong@users.noreply.github.com>)
+## 改动文件清单(3 追加 + 1 重写,均署名 `cdxiaodong <84082748+cdxiaodong@users.noreply.github.com>`,每次提交前 `git config user.email` 验证通过)
 
 | 提交 | 文件 | 说明 |
 |---|---|---|
-| `958da03` test(bench) | `bench/aliyun-vuln-tf/main.tf` | 阿里云 provider + public-read 靶标桶 + private 对照桶,头部 8 行红字声明,Purpose 标签 |
-| `958da03` test(bench) | `bench/aliyun-vuln-tf/variables.tf` | region(默认 cn-hangzhou)/ bucket_prefix / bucket_suffix |
-| `958da03` test(bench) | `bench/aliyun-vuln-tf/outputs.tf` | 两桶名输出 + expected_detection 预期对照(public-read→high / private→info) |
-| `958da03` test(bench) | `bench/aliyun-vuln-tf/README.md` | apply/verify/destroy 三步用法、费用与清理警告、凭证走环境变量 |
-| `958da03` test(bench) | `tests/test_vuln_tf.py` | 12 项静态校验:HCL 块/靶标语义/Purpose 标签/红字头/LTAI 扫描/三步用法;terraform 不可用则 skip fmt |
-| `25d5c0a` docs(bench) | `docs/benchmark-plan.md` | 追加「自建云靶场(国产云差异化)」一节(仅追加,不改已有内容) |
+| `ca4a132` test(bench) | `bench/aliyun-vuln-tf/main.tf` | 追加场景二(不动场景一):自定义过度授权策略 `vuln_overpriv`(Action `ram:AttachPolicyToUser`+`ram:CreateAccessKey`,Resource `*`)+ 靶标用户 `vuln-ram-user-*` + 对照用户 `safe-ram-user-*`(挂 `AliyunOSSReadOnlyAccess`)+ 两个挂载;全部带 `Purpose=vuln-benchmark` 标签 |
+| `ca4a132` test(bench) | `bench/aliyun-vuln-tf/outputs.tf` | 追加场景二:`vuln_ram_user`/`safe_ram_user` 用户名输出 + `expected_detection_scene2`(vuln 命中 `AttachPolicyToSelf`+`CreateAccessKey-for-HighPriv` 两条 critical,safe 零命中) |
+| `ca4a132` test(bench) | `tests/test_vuln_tf.py` | 追加 8 项场景二用例(共 20 项,**场景一 12 项零改动**):资源存在/两条提权 Action 绑定/对照只读系统策略/靶标用户 Purpose 标签/钉死不建真 AK/钉死不建 LoginProfile/outputs 对照/README 场景二章节 |
+| `1647f07` docs(bench) | `bench/aliyun-vuln-tf/README.md` | 重写(保留场景一全文):加场景二说明、两场景对照表、为什么不建真实 AccessKey(安全设计)、apply/destroy 警告复述、用户名后缀复用 bucket_suffix 说明 |
+
+未改:场景一 `main.tf`/`variables.tf` 旧块、`src/`、`docs/benchmark-plan.md`、`bench/docker-compose.yml`。
 
 ## 自测结果(三绿)
 
-- `ruff check src tests` → All checks passed
-- `pyright`(指定 venv 解释器跑全仓库)→ **0 errors, 0 warnings, 0 informations**
-- `pytest`(全量)→ **182 passed, 1 skipped**(本次新增 11 passed + 1 skipped,skipped 是 terraform fmt 因本机无 terraform 跳过,符合预期)
-- **未执行任何 terraform init/apply**(派活单红线严格遵守)
+| 门 | 命令(worktree 内) | 结果 |
+|---|---|---|
+| ruff | `ruff check src tests` | **All checks passed** |
+| pyright | `pyright -p pyproject.toml --pythonpath .venv/bin/python` | **0 errors, 0 warnings, 0 informations** |
+| pytest | `pytest -q` | **230 passed, 1 skipped**(skip = 本机无 `terraform` 二进制,`terraform fmt -check` 跳过,CI 不红) |
 
-## 验收对照(派活单逐项)
+> pyright 备注:默认调用会误报 `src/cain_agent/cloud/aliyun_oss.py` 的 `import oss2` 为无法解析——这是 main 既有的 venv 发现怪癖(主仓库默认 pyright 同样报错),与本次改动无关;按产线 recipe 用 `--pythonpath .venv/bin/python` 指向 venv 解释器即 0 error。本次仅 `tests/test_vuln_tf.py` 为 pyright 受影响文件,类型干净。
 
-| 要求 | 落实 |
-|---|---|
-| 阿里云 provider + OSS 桶,acl=public-read(靶标)+ private(对照) | main.tf 两个 alicloud_oss_bucket resource,测试 `test_vuln_bucket_acl_is_public_read` / `test_control_bucket_acl_is_private` 钉死 |
-| bucket 名带随机后缀变量 | variables.tf `bucket_suffix`,main.tf 用 `${var.bucket_prefix}-...-${var.bucket_suffix}` |
-| 所有资源打 Purpose = "vuln-benchmark" 标签 | 两桶各带标签块,测试 `test_buckets_have_purpose_tag` 校验标签数 ≥ resource 数 |
-| 文件头部红字声明:仅授权测试、apply 后当天 destroy | main.tf 前 8 行声明,测试 `test_main_tf_has_redline_header` 钉死 |
-| region(默认 cn-hangzhou)/ bucket 前缀 | variables.tf 含,默认值正确,测试 `test_variables_tf_has_region_and_bucket_prefix` |
-| outputs.tf 含两桶名 + 预期检出结果(public→high, private→info) | outputs.tf `expected_detection` 块,测试 `test_outputs_tf_has_expected_detection_outputs` |
-| README:apply/verify/destroy 三步、费用与清理警告、凭证环境变量 | README 完整覆盖,测试 `test_readme_has_three_step_usage` 钉死 |
-| 静态校验:HCL 块/public-read/Purpose/LTAI 扫描 | 11 项 passed;LTAI 用 `LTAI[A-Za-z0-9]{12,}` 正则识别疑似真实 AK(教学注释提及"LTAI 前缀"不算泄漏,符合工程实际) |
-| terraform fmt -check 可用则跑,否则 skip | `@pytest.mark.skipif` 本机无 terraform → skipped,CI 不红 |
-| 严禁 terraform init/apply | 全程未执行;只写配置 + 静态检查 |
-| benchmark-plan.md 仅追加一节,不改已有内容 | diff 显示 docs/benchmark-plan.md 仅 +30 行追加,原有四节(设计原则/第一层/第二层/评测节奏)完整 |
-| 不加更多场景、不动 docker-compose.yml、不动 src/ | 改动仅 bench/aliyun-vuln-tf/ + tests/test_vuln_tf.py + docs/benchmark-plan.md;src/ 与 bench/docker-compose.yml 零改动 |
+## 验收对照(对照 tasks/2026-08-07.md 任务 3 验收标准)
 
-## 测试设计说明
+| 验收项 | 要求 | 实际 |
+|---|---|---|
+| 三绿 | ruff / pyright / pytest | ✅ 全绿(见上表) |
+| 「不建真 AK」有测试钉死 | 不得创建 `alicloud_ram_access_key` 资源 | ✅ `test_no_ram_access_key_resource` 钉死(main.tf 全文无该资源类型) |
+| 未执行任何 terraform apply | 严禁 init/apply | ✅ 全程仅静态校验,未运行 `terraform` 任何子命令(本机甚至未安装二进制,fmt 用例 skip) |
 
-- **LTAI 扫描口径**:用正则 `LTAI[A-Za-z0-9]{12,}`(真实 AK 通常 24-30 位)识别疑似真实泄漏,而非裸 "LTAI" 字符串——这样教学注释提及"AK 前缀为 LTAI"是允许的(便于读者理解),只有"像真 AK 的长串"才触发。这是实际工程的做法,避免误伤教学文本又仍能抓真实泄漏。
-- **靶标语义钉死**:测试以 resource 块切片,确保 `public-read` 绑在靶标桶、`private` 绑在对照桶,防止文件结构改坏后语义错位。
-- **terraform fmt 跳过**:本机 terraform 不可用,用 `pytest.skip` 处理,Lead 在有 terraform 的机器上验收时会自动实跑。
+## 任务强制项对照
 
-## 并发隔离
+| 强制项 | 要求 | 实际 |
+|---|---|---|
+| 改动范围 | 仅 `bench/aliyun-vuln-tf/`(main/variables/outputs/README)+ `tests/test_vuln_tf.py` | ✅ 未越界(variables.tf 未需改动,复用 bucket_suffix) |
+| 靶标命中两条规则 | vuln 策略含 `ram:AttachPolicyToUser` + `ram:CreateAccessKey`,Resource `*` | ✅ 对应 `AttachPolicyToSelf` + `CreateAccessKey-for-HighPriv`(均 critical) |
+| 对照用户 | 只挂 `AliyunOSSReadOnlyAccess` 系统策略 | ✅ `policy_type = "System"`,零 RAM 写权限,零命中 |
+| 不建真 AK | 不创建 AccessKey 资源 | ✅ 测试钉死 |
+| 不设登录密码 | vuln 用户纯 API 实体 | ✅ 无 `alicloud_ram_login_profile`(测试钉死) |
+| Purpose 标签 | 所有新资源打 `Purpose = vuln-benchmark` | ✅ 两用户 + 自定义策略均带三标签(Purpose/Scenario/ManagedBy) |
+| 头部授权声明 | 红字声明保持 | ✅ 场景一头部 8 行声明未动;场景二追加块自带用途说明 |
+| 严禁 terraform init/apply | — | ✅ 未执行 |
+| commit 署名 | `cdxiaodong <84082748+cdxiaodong@users.noreply.github.com>` | ✅ 每次提交前 `git config user.email` 验证 |
+| 写文件用 shell heredoc | 不用 apply_patch | ✅ 全程 heredoc + perl/sed 微调 |
 
-全程独立 git worktree(`cain-agent-wt-tf`)完成,提交后即移除。主工作区当前在 Lead/Codex-A 分支,我未触碰其任何文件。
+## 设计说明(规则命中映射)
+
+`RamPrivescAnalyzer.PRIVESC_RULES` 中,`ram:AttachPolicyToSelf` 规则的 `required_perms` 为 `(ram:AttachPolicyToUser,) | (ram:AttachPolicyToGroup,) | (ram:AttachPolicyToRole,)`(OR 跨集),`ram:CreateAccessKey-for-HighPriv` 为 `(ram:CreateAccessKey,)`。靶标策略同时授予这两个 Action(且 Resource `*`),因此 apply 后该用户会被分析器精确命中 **2 条 critical 规则**;对照用户仅 `AliyunOSSReadOnlyAccess`(oss:Get*/List*)无任何 RAM 写 Action,零命中。靶场与检测模块的规则表形成闭环。
+
+## 安全说明
+
+- 靶场**故意不创建任何 RAM AccessKey 资源**:靶标只验证「权限配置能否被检出」,不需要真实可用凭证;一旦 apply 出真 AK 写进 state 即构成可用凭证泄露面,违背「只读/当天 destroy」红线。该约束由 `test_no_ram_access_key_resource` 静态钉死。
+- vuln 用户为纯 API 实体,不设控制台登录密码(无 LoginProfile),由 `test_no_ram_login_profile` 钉死。
+- 两用户均设 `force = true`,destroy 时自动移除挂载的策略,便于当天清理。
