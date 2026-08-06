@@ -166,3 +166,102 @@ def test_terraform_fmt_check() -> None:
             + result.stdout
             + result.stderr
         )
+
+
+# ===========================================================================
+# 场景二:RAM 过度授权用户(给 Day4 RAM 提权分析模块做端到端回归)
+# 不动上方场景一已有用例;以下均为场景二静态校验。
+# ===========================================================================
+
+
+def test_main_tf_has_scene2_ram_resources() -> None:
+    """场景二:自定义过度授权策略 + vuln/safe 两个 RAM 用户 + 两个挂载。"""
+    text = _read(MAIN_TF)
+    assert 'resource "alicloud_ram_policy" "vuln_overpriv"' in text, "缺少靶标自定义策略 vuln_overpriv"
+    assert 'resource "alicloud_ram_user" "vuln_ram_user"' in text, "缺少靶标用户 vuln_ram_user"
+    assert 'resource "alicloud_ram_user" "safe_ram_user"' in text, "缺少对照用户 safe_ram_user"
+    assert 'resource "alicloud_ram_user_policy_attachment" "vuln_attach"' in text
+    assert 'resource "alicloud_ram_user_policy_attachment" "safe_attach"' in text
+
+
+def test_vuln_ram_policy_has_two_privesc_actions() -> None:
+    """靶标策略含 ram:AttachPolicyToUser + ram:CreateAccessKey,Resource *。
+
+    以策略 resource 块为单位切片,确保两条 Action 绑定在靶标策略(而非别处)。
+    """
+    text = _read(MAIN_TF)
+    start = text.index('resource "alicloud_ram_policy" "vuln_overpriv"')
+    end = text.find("resource", start + 1)
+    block = text[start : end if end != -1 else len(text)]
+    assert '"ram:AttachPolicyToUser"' in block, "靶标策略缺少 ram:AttachPolicyToUser"
+    assert '"ram:CreateAccessKey"' in block, "靶标策略缺少 ram:CreateAccessKey"
+    assert 'Resource = "*"' in block, "靶标策略 Resource 应为 *(全资源)"
+
+
+def test_safe_ram_user_only_system_readonly() -> None:
+    """对照用户只挂 AliyunOSSReadOnlyAccess 系统策略,零提权权限。"""
+    text = _read(MAIN_TF)
+    start = text.index('resource "alicloud_ram_user_policy_attachment" "safe_attach"')
+    end = text.find("resource", start + 1)
+    block = text[start : end if end != -1 else len(text)]
+    assert "AliyunOSSReadOnlyAccess" in block, "对照用户应只挂 AliyunOSSReadOnlyAccess"
+    assert 'policy_type = "System"' in block, "对照用户应为 System 系统策略(非自定义)"
+    # 对照挂载块里不应出现任何 RAM 写 Action
+    assert "ram:AttachPolicy" not in block, "对照用户不应含 ram:AttachPolicy*"
+    assert "ram:CreateAccessKey" not in block, "对照用户不应含 ram:CreateAccessKey"
+
+
+def test_vuln_ram_user_has_purpose_tag() -> None:
+    """靶标 RAM 用户带 Purpose = vuln-benchmark 标签。"""
+    text = _read(MAIN_TF)
+    start = text.index('resource "alicloud_ram_user" "vuln_ram_user"')
+    end = text.find("resource", start + 1)
+    block = text[start : end if end != -1 else len(text)]
+    assert (
+        'Purpose   = "vuln-benchmark"' in block or 'Purpose = "vuln-benchmark"' in block
+    ), "靶标 RAM 用户缺少 Purpose = vuln-benchmark 标签"
+
+
+def test_no_ram_access_key_resource() -> None:
+    """安全红线:严禁创建 RAM AccessKey 资源(防 apply 后泄出可用 AK)。
+
+    靶标只验证权限配置能否被检出,不需要真实可用凭证。
+    """
+    text = _read(MAIN_TF)
+    assert "alicloud_ram_access_key" not in text, (
+        "检测到 RAM AccessKey 资源——靶场严禁创建真实 AccessKey(安全设计)"
+    )
+
+
+def test_no_ram_login_profile() -> None:
+    """vuln 用户为纯 API 实体,不设控制台登录密码(不创建 LoginProfile)。"""
+    text = _read(MAIN_TF)
+    assert "alicloud_ram_login_profile" not in text, (
+        "检测到 RAM LoginProfile——靶场用户应为纯 API 实体,不设登录密码"
+    )
+
+
+def test_outputs_tf_has_scene2_detection_outputs() -> None:
+    """outputs.tf 含场景二用户名输出与预期检出对照。"""
+    text = _read(OUTPUTS_TF)
+    assert 'output "vuln_ram_user"' in text, "outputs 缺少 vuln_ram_user"
+    assert 'output "safe_ram_user"' in text, "outputs 缺少 safe_ram_user"
+    assert "expected_detection_scene2" in text, "outputs 缺少场景二预期检出对照"
+    # vuln 用户应命中 AttachPolicyToSelf + CreateAccessKey-for-HighPriv 两条 critical
+    assert "ram:AttachPolicyToSelf" in text, "outputs 应标注命中 AttachPolicyToSelf 规则"
+    assert "ram:CreateAccessKey-for-HighPriv" in text, "outputs 应标注命中 CreateAccessKey-for-HighPriv 规则"
+    # 对照用户应零命中
+    assert "safe_ram_user" in text
+
+
+def test_readme_has_scene2_section() -> None:
+    """README 含场景二说明(用途 / 不建真 AK 理由 / apply-destroy 警告)。"""
+    text = _read(README_MD)
+    assert "场景二" in text, "README 缺少场景二章节"
+    assert "RAM" in text
+    assert "AliyunOSSReadOnlyAccess" in text, "README 应说明对照用户挂 AliyunOSSReadOnlyAccess"
+    # 为什么不用真实 AK 资源
+    assert "AccessKey" in text, "README 应说明不创建真实 AccessKey 的理由"
+    # apply/destroy 警告复述
+    assert "destroy" in text
+    assert "当天" in text or "用完即清" in text
