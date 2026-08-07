@@ -31,6 +31,31 @@ Built on [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 
 Cain is strictly for **authorized security testing** — your own environments or engagements with written authorization. Core features run with read-only credentials. Scope is enforced by configuration, not by AI self-discipline. You are responsible for complying with applicable laws.
 
+## Quick Start
+
+```bash
+# Install
+pip install cain-agent
+
+# Dry-run: initialize workspace + scope, print plan — no Agent, no tokens
+cain-agent run --target 127.0.0.1 --dry-run
+
+# Full run against a local target
+cain-agent run --target myapp.local --workspace ./my-engagement
+
+# Public targets require explicit authorization declaration
+cain-agent run --target example.com --i-have-authorization
+```
+
+| Flag | Description |
+|---|---|
+| `--target` | Target host/IP (required, written to scope.yaml) |
+| `--workspace` | Workspace directory (default: `./workspace`) |
+| `--dry-run` | Initialize workspace + print plan, no Agent |
+| `--idle-timeout` | Idle timeout in seconds (default: 300) |
+| `--total-budget` | Wall-clock budget in seconds |
+| `--i-have-authorization` | Required for public (non-local / non-private) targets |
+
 ## Status
 
 Phase 0 — project scaffolding. See [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
