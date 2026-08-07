@@ -1,5 +1,14 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-07 · Day 5 验收:校验闭环端到端成型 + 冒烟首跑通过
+
+**验收结论:Day 5 三分支 + 冒烟报告分支全部通过(CI 三绿 + 署名正确 + 红线/凭证扫描干净),已合并 main 并推送,main 上 275 测试全绿。**
+
+- **Findings 校验流水线**(`d92ea18`,core 分支):dedup + FindingValidator 串接,幂等(终态跳过不重复校验)、单条异常容错标 system_error、经 StageHandler 注入点挂 Orchestrator(report 前置),冻结文件零改动;校验汇总落盘 report/validation-summary.json
+- **CredRedactHook 凭证脱敏**(`303dba4`,feat 分支):LTAI/AKIA/sk-/JWT/PEM/键值对模式表,替换为 `<REDACTED:类型:sha256前8位>` 可审计格式,文档示例白名单防误伤,redact_dict 递归处理,PostToolUse hook 形态;测试全部使用构造假串
+- **vuln-tf 场景二**(test 分支):RAM 过度授权用户靶标(命中 AttachPolicyToSelf/CreateAccessKey 两规则)+ 只读对照用户;钉死"不建真 AK 资源";未执行任何 terraform apply
+- **冒烟测试首跑通过**(`2e777c2`,smoke 分支,tasks/smoke-test-2026-08-06.md):pip 安装、CLI --version/--help、Orchestrator 编排循环(recon→test→report,scope 仅 127.0.0.1,零网络零凭证)三项全过 exit 0——**项目第一次端到端真实跑通**
+
 ## 2026-08-06 · Day 4 验收:三分支全过合入,校验闭环成型
 
 **验收结论:任务 1/2/3 全部通过(CI 三绿 + 署名正确 + 红线/凭证/tfstate 扫描干净),已合并 main 并推送,main 上 222 测试全绿(1 个 skip 为 terraform fmt 可选检查)。**
