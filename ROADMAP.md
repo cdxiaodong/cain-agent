@@ -34,7 +34,7 @@
 ## Phase 3 · 扩能+传播(2027.01-04)
 
 - [ ] OWASP Top10 技能补全 + framework 专项
-- [ ] 云模块扩 AWS / 腾讯云
+- [x] 云模块扩 AWS / 腾讯云 / Azure(2026-08-09,aws_s3.py/azure_blob.py/tencent_cos.py 合入)
 - [ ] IAM/RAM 提权路径图可视化
 - [ ] 2-3 篇技术文章 + Gitee 同步 + 社区运营
 
