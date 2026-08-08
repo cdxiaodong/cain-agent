@@ -90,3 +90,8 @@
 - **feat(skills)**: OWASP 文件上传漏洞检测技能 + 格式校验
 - **feat(cloud)**: 腾讯云 COS 暴露检测模块
 - **feat(skills)**: OWASP CSRF 检测技能文档 + 格式校验测试
+
+### Day 9 上午任务（监工补位，Lead 未激活）— 全部完成
+- **feat(cloud)**: Azure Blob 暴露检测模块（只读）— 完成三大国际云覆盖（2c68064）
+- **feat(skills)**: OWASP 路径遍历检测技能 + 格式校验（d9a4531）
+- **docs(readme)**: 添加 Features 章节 — 云覆盖 + OWASP Top10（a77b2ca）
