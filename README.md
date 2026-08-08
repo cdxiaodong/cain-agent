@@ -33,28 +33,20 @@ Cain is strictly for **authorized security testing** — your own environments o
 
 ## Quick Start
 
+### For Users
+
 ```bash
-# Install
 pip install cain-agent
-
-# Dry-run: initialize workspace + scope, print plan — no Agent, no tokens
-cain-agent run --target 127.0.0.1 --dry-run
-
-# Full run against a local target
-cain-agent run --target myapp.local --workspace ./my-engagement
-
-# Public targets require explicit authorization declaration
-cain-agent run --target example.com --i-have-authorization
 ```
 
-| Flag | Description |
-|---|---|
-| `--target` | Target host/IP (required, written to scope.yaml) |
-| `--workspace` | Workspace directory (default: `./workspace`) |
-| `--dry-run` | Initialize workspace + print plan, no Agent |
-| `--idle-timeout` | Idle timeout in seconds (default: 300) |
-| `--total-budget` | Wall-clock budget in seconds |
-| `--i-have-authorization` | Required for public (non-local / non-private) targets |
+### For AI Agents — One-Click Install Prompt
+
+> **"安装 cain-agent 到用户本地 Python 环境，克隆仓库 https://github.com/cdxiaodong/cain-agent，用 pip/uv 装 editable 模式，验证 CLI 可执行"**
+
+This single prompt instructs any AI agent to:
+1. Clone the repository
+2. Install in editable mode (`pip install -e .` or `uv pip install -e .`)
+3. Verify installation by running `cain-agent --version`
 
 ## Status
 
