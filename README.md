@@ -15,6 +15,16 @@ Built on [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 | Environment | No WAF, no rate limiting | Real WAF / risk control with dynamic strategy adjustment |
 | Deliverable | A flag | Auditable evidence chain + reproducible PoC + remediation advice |
 
+
+## Features
+
+- 🎯 **Real-world Focus**: Business logic flaws, auth chains, cloud misconfigurations
+- ☁️ **Cloud Native**: AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 coverage
+- 🔒 **Safety First**: Read-only by default, scope enforcement, credential redaction
+- 🤖 **AI-Powered**: Claude Agent SDK with deterministic orchestration
+- 📊 **Benchmark**: XBOW + self-built vulnerable-terraform evaluation
+- 🛡️ **OWASP Top10**: SQLi, XSS, SSRF, CSRF, File Upload, XXE, Command Injection, Path Traversal
+
 ## Core Design
 
 > **Deterministic engineering constrains agent freedom** — stage transitions, scope enforcement, and dangerous-operation circuit breakers are hard engineering constraints; path selection and evidence analysis are left to the agent.
