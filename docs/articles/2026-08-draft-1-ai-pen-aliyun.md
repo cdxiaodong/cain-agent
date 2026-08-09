@@ -30,7 +30,7 @@ Cain 想填的正是这三块空位:业务逻辑漏洞、国产云安全检测�
 
 Cain 的定位很明确:**首个懂国产云的实战型 AI 渗透工程师**。不是 CTF 靶场型,不是论文复现型。它有三个其他工具没有的差异化点。
 
-**第一,国产云原生支持。** 现有的云安全 AI 工具清一色只认 AWS。但国内企业跑在阿里云、腾讯云、华为云上的资产,它们的 IAM 体系叫 RAM/CAM/IAM,API 不通、权限模型不一样、连命名前缀都不一样(阿里云 AK 前缀是 `LTAI`,AWS 是 `AKIA`)。Cain 的云模块从阿里云起步,已经落地了两个核心检测件:OSS 对象存储暴露检测和 RAM 提权路径分析,并配套自建了 vulnerable-terraform 靶场做端到端回归。这条路走通了,后续扩腾讯云、华为云只是工程量。
+**第一,国产云原生支持。** 现有的云安全 AI 工具清一色只认 AWS。但国内企业跑在阿里云、腾讯云、华为云上的资产,它们的 IAM 体系叫 RAM/CAM/IAM,API 不通、权限模型不一样、连命名前缀都不一样(阿里云 AK 前缀是 `LTAI`,AWS 是 `AKIA`)。Cain 的云模块已覆盖七大云厂商:阿里云(OSS 暴露检测 + RAM 提权路径分析)、AWS(S3 ACL + Policy + Public Access Block 全覆盖)、腾讯云 COS(ACL + Policy + 敏感文件扫描)、华为云 OBS(S3 兼容 API)、Azure Blob、GCP GCS。从阿里云起步走通了这条路,七厂商扩展已基本到位,后续补深度而非铺广度。
 
 **第二,校验闭环——让 AI 自己查自己。** 这是 Cain 架构上最硬的设计。后面单独讲。
 
@@ -131,22 +131,22 @@ Cain 的 RAM 提权分析模块(`RamPrivescAnalyzer`)以只读 Get/List API 枚�
 
 ## 七、Roadmap 与引流
 
-Cain 当前处于 Phase 2 收尾阶段,已合入的能力清单:
+Cain 当前处于 Phase 3 推进阶段,已合入的能力清单:
 
 - 编排循环(Orchestrator 状态机 + Workspace 外置记忆)
 - 双 Agent 校验闭环(发现/校验分离 + 去重 + 四状态)
 - 三道安全 Hook(ScopeGuard / CredRedact / 预算熔断)
-- 阿里云双模块(OSS 暴露检测 + RAM 提权路径分析)
+- 七大云厂商模块(阿里云 OSS + RAM / AWS S3 / 腾讯云 COS / 华为云 OBS / Azure Blob / GCP GCS)
 - 自建 vulnerable-terraform 靶场(OSS 公开桶 + RAM 过度授权两场景)
 - Docker 一键运行(非 root 用户)
-- Web 三技能(SQLi / XSS / SSRF)+ 格式校验规范
+- OWASP Top10 十大技能(SQLi / XSS / SSRF / 命令注入 / 文件上传 / 路径遍历 / 反序列化 / 信息泄露 / CSRF / XXE)+ 格式校验规范
 
 下一步:
 
 - 首轮 benchmark(vuln-tf 靶场真实跑分,需自有账号只读凭证)
 - 演示视频录制
-- 云模块扩展(腾讯云 / 华为云)
-- OWASP Top10 技能补全
+- IAM/RAM 提权路径图可视化
+- 2-3 篇技术文章 + Gitee 同步 + 社区运营
 
 GitHub: **[链接:发布时填入]**
 
