@@ -1,5 +1,20 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-10 · Day 10:云模块七厂商全覆盖 + OWASP Top10 技能补齐 + 文章定稿
+
+**本轮交付:三大云模块合入(AWS S3 + 腾讯云 COS + 华为云 OBS),两大 OWASP 技能补齐(CSRF + XXE),传播文章更新定稿。main 上全量测试全绿。**
+
+- **AWS S3 暴露检测**(合并 `feat/2026-08-10-aws-s3-exposure`):S3ExposureChecker 只读检查 ACL + Policy + Public Access Block 三层配置;boto3 全 mock,24 个单测,零触网零真实凭证
+- **腾讯云 COS 暴露检测**(从 `feat/2026-08-08-tencent-cos-exposure` 提取):CosExposureChecker 使用 requests + COS XML-API HMAC-SHA1 签名(不依赖重型 SDK),ACL + Policy + 敏感文件扫描(.env/.key/.pem/.git 等);40 个单测
+- **华为云 OBS 暴露检测**(新开发):ObsExposureChecker 复用 boto3 + 自定义 endpoint_url(S3 兼容 API),ACL + Policy 双层检测;24 个单测
+- **CSRF 检测技能**(从 `feat/2026-08-08-csrf-skill` 提取):Token 存在性分析 + 去 Token 重放 + Referer/Origin 伪造 + 跨站 PoC 构造;22 个格式校验测试
+- **XXE 检测技能**(新开发):经典文件读取 + Blind XXE OOB 外带 + SSRF 利用 + XInclude/编码绕过;22 个格式校验测试
+- **传播文章更新**(`docs/articles/2026-08-draft-1-ai-pen-aliyun.md`):更新云模块覆盖为七厂商、技能覆盖为 OWASP Top10 十大技能、Roadmap 从 Phase 2 推进到 Phase 3
+- **云模块总计**:阿里云(OSS + RAM)、AWS(S3)、腾讯云(COS)、华为云(OBS)、Azure(Blob)、GCP(GCS) — 七大云厂商全覆盖
+- **技能总计**:SQLi / XSS / SSRF / 命令注入 / 文件上传 / 路径遍历 / 反序列化 / 信息泄露 / CSRF / XXE — OWASP Top10 基本覆盖
+
+
+
 ## 2026-08-07 · Day 5 验收:校验闭环端到端成型 + 冒烟首跑通过
 
 **验收结论:Day 5 三分支 + 冒烟报告分支全部通过(CI 三绿 + 署名正确 + 红线/凭证扫描干净),已合并 main 并推送,main 上 275 测试全绿。**

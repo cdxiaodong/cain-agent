@@ -29,12 +29,12 @@
 - [x] 指纹去重 + 定级规则表(2026-08-05,findings.py 合入)
 - [x] 云模块:RAM 提权路径分析(2026-08-06,aliyun_ram.py 合入)
 - [ ] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark(场景一 OSS 公开桶已就位,待扩场景+首轮跑分)
-- [ ] 第一篇传播文章("首个懂国产云的实战 AI 渗透 Agent")
+- [x] 第一篇传播文章("首个懂国产云的实战 AI 渗透 Agent")(2026-08-10,初稿定稿 + 七厂商/OWASP Top10 更新)
 
 ## Phase 3 · 扩能+传播(2027.01-04)
 
-- [ ] OWASP Top10 技能补全 + framework 专项
-- [x] 云模块扩 AWS / 腾讯云 / Azure(2026-08-09,aws_s3.py/azure_blob.py/tencent_cos.py 合入)
+- [ ] OWASP Top10 技能补全 + framework 专项(2026-08-10,已完成 10/13:SQLi/XSS/SSRF/命令注入/文件上传/路径遍历/反序列化/信息泄露/CSRF/XXE)
+- [x] 云模块扩 AWS / 腾讯云 / Azure / 华为云 / GCP(2026-08-10,七大云厂商全覆盖)
 - [ ] IAM/RAM 提权路径图可视化
 - [ ] 2-3 篇技术文章 + Gitee 同步 + 社区运营
 
