@@ -24,6 +24,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
+from praisonaiagents.escalation.loop_guard import LoopGuardConfig
+# Increase turn time limit for complex code generation with reasoning models
+LoopGuardConfig.max_time_per_turn = 600.0
+LoopGuardConfig.idempotent_halt_threshold = 30
+LoopGuardConfig.mutating_halt_threshold = 20
+LoopGuardConfig.no_progress_halt = 20
+
 import yaml
 from praisonaiagents import Agent, AgentTeam, Task, tool
 
@@ -113,6 +120,9 @@ def build_team() -> AgentTeam:
         backstory = spec.pop("backstory", "")
         llm = spec.pop("llm", shared_llm)
         extra = {k: v for k, v in spec.items() if k in _VALID_AGENT_KW}
+        # Enable full autonomy + auto-approve tools for unattended operation
+        extra.setdefault("approval", True)
+        extra.setdefault("autonomy", "full_auto")
         agents[key] = Agent(
             name=name,
             role=role,
