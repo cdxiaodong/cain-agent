@@ -1,6 +1,5 @@
 """GCP Cloud Storage 暴露检测模块（只读）"""
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -24,8 +23,8 @@ class GcsExposureChecker:
     
     def __init__(
         self,
-        service_account_json: Optional[str] = None,
-        project_id: Optional[str] = None
+        service_account_json: str | None = None,
+        project_id: str | None = None
     ):
         """初始化检测器
         
@@ -88,6 +87,5 @@ class GcsExposureChecker:
     
     def _check_sensitive_files(self, bucket_name: str) -> list[str]:
         """检测敏感文件（mock 实现）"""
-        sensitive_patterns = [".env", ".key", ".pem", "credentials", "secret"]
         # 实际实现使用 bucket.list_blobs() 遍历文件
         return []

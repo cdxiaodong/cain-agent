@@ -1,44 +1,61 @@
 tasks:
   - description: >
-      读取 src/cain_agent/cloud/aliyun_ram.py（参考实现）和 src/cain_agent/cloud/tencent_cos.py（同厂商风格）。
-      开发腾讯云 CAM 提权路径分析模块 src/cain_agent/cloud/tencent_cam.py，对齐 aliyun_ram.py 的设计模式：
-      CamFinding dataclass (cloud=tencent, service=cam) + CamCredentialError + CamPrivescAnalyzer。
-      提权规则代码常量至少覆盖 5 条路径：AttachUserPolicy / CreateAccessKey / PassRole / UpdateLoginProfile / AssumeRole。
-      测试 tests/test_tencent_cam.py：全 mock monkeypatch SDK，测试缺凭证报错、只读 API 枚举、提权路径匹配、evidence 无凭证泄露。15+ 用例。
+      修复 tests/test_tencent_cam.py 中剩余的失败测试。可以同时修改源码和测试文件。
+      
+      已知问题1（源码bug）：src/cain_agent/cloud/tencent_cam.py 的 _extract_policy_actions 方法。
+      get_policy_version() 返回 result.get("Data")，即 {"PolicyVersion": {"PolicyDocument": "..."}}。
+      但 _extract_policy_actions 调用 policy_data.get("PolicyDocument")，这里 policy_data 是
+      {"PolicyVersion": {...}}，PolicyDocument 嵌在 PolicyVersion 里面。
+      修复：改为 policy_data.get("PolicyVersion", {}).get("PolicyDocument")。
+      
+      已知问题2（测试mock数据bug）：测试中 ListAttachedUserPolicies 的 mock 数据格式不一致。
+      _call_api 的真实实现返回 resp.json().get("Response", {})，即已经剥离了 Response 外壳。
+      但测试中部分 mock 数据（admin_attached、privesc_attached 等局部变量）包含了额外的 "Response" 包装。
+      ListUsers 正确地用了 sample_user_list["Response"]（已剥离），
+      但 ListAttachedUserPolicies 用了 admin_attached（未剥离，仍含 Response）。
+      修复：在测试的 api_responses 中，将 "ListAttachedUserPolicies": admin_attached 
+      改为 "ListAttachedUserPolicies": admin_attached["Response"]，
+      或者将 admin_attached 定义时不加 "Response" 外壳。
+      
+      验证：python3 -m pytest tests/test_tencent_cam.py -v，确保全部通过。
     expected_output: >
-      src/cain_agent/cloud/tencent_cam.py + tests/test_tencent_cam.py (15+ mock tests).
+      tests/test_tencent_cam.py 全部测试通过（0 failed）。
     agent: cloud_engineer
 
   - description: >
-      读取 skills/web/csrf/SKILL.md（参考格式）和 tests/test_csrf_skill.py（参考测试）。
-      开发 skills/web/ssti/SKILL.md：SSTI 检测技能。原理、检测方法、Payload ({{7*7}} ${7*7} <%=7*7%>)、
-      工具 (curl/tplmap)、Finding JSON、六个必需章节。
-      开发 skills/web/open-redirect/SKILL.md：开放重定向检测技能。redirect/url/next 参数、Location 头、
-      Finding JSON。
-      测试 tests/test_ssti_skill.py + tests/test_open_redirect_skill.py，对齐 test_csrf_skill.py，每个 15+ 用例。
+      修复 tests/test_article2_format.py 中 3 个失败的测试。
+      这些测试检查了文章中不存在的结构，需要调整测试以匹配实际文章内容。
+      
+      失败1 test_has_closing_section：测试检查文章是否有结尾部分（如"总结"等关键词）。
+      读取 docs/articles/02-validation-loop-deep-dive.md，检查实际结尾内容，
+      调整测试的匹配模式以匹配文章实际的结尾部分。
+      
+      失败2 test_frontmatter_like_section：测试检查文章是否有 YAML frontmatter（---分隔符）
+      或元数据区域。文章可能没有 YAML frontmatter，这是正常的。
+      如果文章确实没有 frontmatter，应放宽这个测试或跳过。
+      
+      失败3 test_no_broken_markdown_links：测试的 markdown 链接检测正则匹配到了
+      JSON 代码块中的方括号 [ ]，产生了误报。
+      修复：在检测前先移除代码块内容（```...```之间的内容），只检测正文中的链接。
+      
+      先用 read_file 读取 docs/articles/02-validation-loop-deep-dive.md 和 
+      tests/test_article2_format.py 了解实际内容，再修复。
+      验证：python3 -m pytest tests/test_article2_format.py -v，确保全部通过。
     expected_output: >
-      skills/web/ssti/SKILL.md + skills/web/open-redirect/SKILL.md +
-      tests/test_ssti_skill.py + tests/test_open_redirect_skill.py.
-    agent: skill_engineer
-
-  - description: >
-      读取 docs/articles/2026-08-draft-1-ai-pen-aliyun.md（参考风格）。
-      撰写 docs/articles/02-validation-loop-deep-dive.md：
-      主题「让 AI 自己查自己：渗透 Agent 的校验闭环设计」。
-      要点：AI 幻觉漏洞风险、双 Agent 独立会话校验、四状态结构化输出
-      (confirmed/false_positive/inconclusive/system_error)、FindingValidator、去重指纹、规则表收口。
-      格式：1800-3500 字、3 个标题候选、含「授权」关键词、无敏感字样、无外露真实 IP/域名。
-      创建 tests/test_article2_format.py 格式校验测试 (15+ 用例)。
-    expected_output: >
-      docs/articles/02-validation-loop-deep-dive.md + tests/test_article2_format.py.
+      tests/test_article2_format.py 全部测试通过（0 failed）。
     agent: doc_engineer
 
   - description: >
       验收所有交付物。运行 python3 -m pytest tests/ -v 全量测试。
+      确认 0 个失败。
       运行 ruff check src tests。红线扫描 grep -r 'pingan\|LTAI\|AKIA' src tests docs（应为空）。
-      如有失败，修复后重新运行直到全绿。
-      全部通过后 git add -A && git commit -m "feat: PraisonAI 团队交付 — Tencent CAM 提权 + SSTI/Open Redirect + 文章2"
-      && git push origin main。
+      
+      全部通过后执行：
+      git add -A
+      git -c user.name="cdxiaodong" -c user.email="84082748+cdxiaodong@users.noreply.github.com" commit -m "feat(cloud): PraisonAI团队交付 — Tencent CAM提权检测 + SSTI/Open Redirect技能 + 文章2校验闭环"
+      git push origin main
+      
+      如果测试还有失败，不要提交。列出失败测试。
     expected_output: >
       全量 pytest 绿 + ruff 绿 + 红线干净 + 已推送 main.
     agent: lead

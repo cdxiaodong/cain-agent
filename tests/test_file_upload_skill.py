@@ -50,11 +50,11 @@ def test_payload_examples():
 
 def test_chinese_quality():
     """中文质量检查"""
-    content = Path("skills/web/file-upload/SKILL.md").read_text(encoding="utf-8")
+    Path("skills/web/file-upload/SKILL.md").read_text(encoding="utf-8")
     
     # 检查常见错字
     common_errors = ["的得地", "在再", "做作"]
-    for error in common_errors:
+    for _error in common_errors:
         # 简单检查，不做复杂语法分析
         pass
 

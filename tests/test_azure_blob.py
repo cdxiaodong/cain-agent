@@ -1,6 +1,7 @@
 """Azure Blob 测试"""
 import pytest
-from cain_agent.cloud.azure_blob import BlobExposureChecker, BlobCredentialError
+
+from cain_agent.cloud.azure_blob import BlobCredentialError, BlobExposureChecker
 
 
 def test_missing_credentials_raises(monkeypatch):

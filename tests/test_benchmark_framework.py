@@ -63,7 +63,7 @@ def test_script_executable():
         assert hasattr(run_benchmark, "run_xbow_benchmark")
         assert hasattr(run_benchmark, "run_vuln_tf_benchmark")
         assert hasattr(run_benchmark, "BenchmarkResult")
-    except ImportError as e:
+    except ImportError:
         # 如果导入失败，至少检查文件内容
         content = Path("bench/run_benchmark.py").read_text(encoding="utf-8")
         assert "def run_xbow_benchmark" in content

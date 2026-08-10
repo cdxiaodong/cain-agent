@@ -1,7 +1,9 @@
 """GCP GCS 暴露检测测试（全 mock，零触网）"""
 import os
+
 import pytest
-from cain_agent.cloud.gcp_gcs import GcsExposureChecker, GcsCredentialError, GcsFinding
+
+from cain_agent.cloud.gcp_gcs import GcsCredentialError, GcsExposureChecker, GcsFinding
 
 
 def test_missing_credentials_raises():

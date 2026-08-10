@@ -1,6 +1,5 @@
 """Azure Blob Storage 暴露检测模块（只读）"""
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -22,7 +21,7 @@ class BlobCredentialError(Exception):
 class BlobExposureChecker:
     """Azure Blob Storage 暴露检测器"""
     
-    def __init__(self, connection_string: Optional[str] = None):
+    def __init__(self, connection_string: str | None = None):
         """初始化检测器"""
         import os
         self.connection_string = connection_string or os.getenv("AZURE_STORAGE_CONNECTION_STRING")
