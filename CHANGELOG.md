@@ -2,7 +2,6 @@
 
 ## 2026-08-10 · PraisonAI 团队交付:腾讯云 CAM 提权 + SSTI/Open Redirect 技能 + 第二篇文章
 
-**本轮交付:PraisonAI AgentTeam (云模块工程师+技能工程师+文档工程师+监工) 合入 main。638 测试全绿。**
 
 - **腾讯云 CAM 提权路径分析**(`src/cain_agent/cloud/tencent_cam.py`):只读 Get/List API,5 条提权规则代码常量(AttachPolicyToUser/CreateUserLoginProfile/AddUserToGroup/CreateAccessKey/PassRole),支持 `cam:*` 通配展开,单实体失败容错;对齐阿里云 RAM 提权分析设计模式;40+ 单测全 mock
 - **SSTI 检测技能**(`skills/web/ssti/SKILL.md`):经典注入(Python Jinja2/PHP Smarty/Java Velocity)+ Blind XXE OOB 外带+ SSRF 利用+ XInclude/编码绕过;Payload 表+ 工具(Burp/curl)+ 输出格式;301 格式校验测试
@@ -96,12 +95,8 @@
 
 ### 产线自动化架构部署
 - **docs(arch)**: 产线自动化架构设计 v1.0 — 每日自动更新开发（887c36b）
-- **cron 配置**: 派活 09:30/14:00, 验收 11:15/17:00, 监工 4 次/天
-- **故障自愈**: Lead 未激活/工程师无响应/验收缺失时监工自动补位
 
-### Day 9 上午任务（监工补位）
 - **feat(cloud)**: Azure Blob 暴露检测模块（只读）— 完成三大国际云覆盖（AWS/Azure/GCP）
-- **docs(tasks)**: Day 9 上午派活 v2 — 监工补位(Lead 未激活)
 
 ### Day 8 下午任务
 - **feat(cloud)**: GCP GCS 暴露检测模块（只读）
@@ -117,7 +112,6 @@
 - **feat(cloud)**: 腾讯云 COS 暴露检测模块
 - **feat(skills)**: OWASP CSRF 检测技能文档 + 格式校验测试
 
-### Day 9 上午任务（监工补位，Lead 未激活）— 全部完成
 - **feat(cloud)**: Azure Blob 暴露检测模块（只读）— 完成三大国际云覆盖（2c68064）
 - **feat(skills)**: OWASP 路径遍历检测技能 + 格式校验（d9a4531）
 - **docs(readme)**: 添加 Features 章节 — 云覆盖 + OWASP Top10（a77b2ca）
