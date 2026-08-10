@@ -1,90 +1,44 @@
 tasks:
-  # ---- 云模块工程师任务：腾讯 CAM 提权路径分析 ----
   - description: >
       读取 src/cain_agent/cloud/aliyun_ram.py（参考实现）和 src/cain_agent/cloud/tencent_cos.py（同厂商风格）。
-
       开发腾讯云 CAM 提权路径分析模块 src/cain_agent/cloud/tencent_cam.py，对齐 aliyun_ram.py 的设计模式：
+      CamFinding dataclass (cloud=tencent, service=cam) + CamCredentialError + CamPrivescAnalyzer。
+      提权规则代码常量至少覆盖 5 条路径：AttachUserPolicy / CreateAccessKey / PassRole / UpdateLoginProfile / AssumeRole。
+      测试 tests/test_tencent_cam.py：全 mock monkeypatch SDK，测试缺凭证报错、只读 API 枚举、提权路径匹配、evidence 无凭证泄露。15+ 用例。
+    expected_output: >
+      src/cain_agent/cloud/tencent_cam.py + tests/test_tencent_cam.py (15+ mock tests).
+    agent: cloud_engineer
 
-      1. CamFinding dataclass：cloud=tencent, service=cam, 含提权路径名称和严重等级
-      2. CamCredentialError：凭证缺失异常
-      3. CamPrivescAnalyzer：只读 API 枚举 CAM 用户和策略，匹配提权路径规则
-      4. 提权规则代码常量：至少覆盖 5 条路径
-         - AttachUserPolicy（自我挂策略）
-         - CreateAccessKey（为他人生成密钥）
-         - PassRole（借高权角色）
-         - UpdateLoginProfile（劫持控制台登录）
-         - AssumeRole（角色链提权）
-
-      测试 tests/test_tencent_cam.py：全 mock，monkeypatch SDK 调用。
-      测试缺凭证报错、只读 API 枚举、提权路径匹配、evidence 无凭证泄露。
-      至少 15 个用例。python3 -m pytest tests/test_tencent_cam.py -v 全绿。
-  expected_output: >
-      src/cain_agent/cloud/tencent_cam.py 模块代码 +
-      tests/test_tencent_cam.py 全 mock 单测（15+ 用例）。
-  agent: cloud_engineer
-
-  # ---- 安全技能工程师任务：SSTI + Open Redirect ----
   - description: >
       读取 skills/web/csrf/SKILL.md（参考格式）和 tests/test_csrf_skill.py（参考测试）。
+      开发 skills/web/ssti/SKILL.md：SSTI 检测技能。原理、检测方法、Payload ({{7*7}} ${7*7} <%=7*7%>)、
+      工具 (curl/tplmap)、Finding JSON、六个必需章节。
+      开发 skills/web/open-redirect/SKILL.md：开放重定向检测技能。redirect/url/next 参数、Location 头、
+      Finding JSON。
+      测试 tests/test_ssti_skill.py + tests/test_open_redirect_skill.py，对齐 test_csrf_skill.py，每个 15+ 用例。
+    expected_output: >
+      skills/web/ssti/SKILL.md + skills/web/open-redirect/SKILL.md +
+      tests/test_ssti_skill.py + tests/test_open_redirect_skill.py.
+    agent: skill_engineer
 
-      开发两个 OWASP 技能：
-
-      1. skills/web/ssti/SKILL.md — SSTI（服务端模板注入）检测技能
-         - 原理：模板引擎未正确转义用户输入，表达式被执行
-         - 检测方法：注入数学表达式观察响应是否包含计算结果
-         - Payload：{{7*7}}、${7*7}、<%=7*7%>、#{7*7}、{{7*'7'}}
-         - 工具：curl / tplmap
-         - Finding JSON 示例（type: ssti）
-         - 六个必需章节：漏洞原理/检测方法/工具/输出格式/证据要求/禁止事项
-
-      2. skills/web/open-redirect/SKILL.md — 开放重定向检测技能
-         - 原理：重定向参数未校验目标域名
-         - 检测方法：修改 redirect/url/next 参数观察 Location 头
-         - Payload：?redirect=https://evil.com / ?url=//evil.com
-         - 工具：curl -v（观察 Location 头）
-         - Finding JSON 示例（type: open_redirect）
-
-      测试 tests/test_ssti_skill.py + tests/test_open_redirect_skill.py，
-      对齐 test_csrf_skill.py 格式，每个 15+ 用例。
-  expected_output: >
-      skills/web/ssti/SKILL.md +
-      skills/web/open-redirect/SKILL.md +
-      tests/test_ssti_skill.py +
-      tests/test_open_redirect_skill.py。
-  agent: skill_engineer
-
-  # ---- 文档传播工程师任务：第二篇文章 ----
   - description: >
       读取 docs/articles/2026-08-draft-1-ai-pen-aliyun.md（参考风格）。
-
       撰写 docs/articles/02-validation-loop-deep-dive.md：
-      主题「让 AI 自己查自己：渗透 Agent 的校验闭环设计」
+      主题「让 AI 自己查自己：渗透 Agent 的校验闭环设计」。
       要点：AI 幻觉漏洞风险、双 Agent 独立会话校验、四状态结构化输出
-      （confirmed/false_positive/inconclusive/system_error）、FindingValidator 执行层、
-      去重指纹、规则表收口、一条假阳性漏洞如何被拦截。
+      (confirmed/false_positive/inconclusive/system_error)、FindingValidator、去重指纹、规则表收口。
+      格式：1800-3500 字、3 个标题候选、含「授权」关键词、无敏感字样、无外露真实 IP/域名。
+      创建 tests/test_article2_format.py 格式校验测试 (15+ 用例)。
+    expected_output: >
+      docs/articles/02-validation-loop-deep-dive.md + tests/test_article2_format.py.
+    agent: doc_engineer
 
-      格式要求：字数 1800-3500、含 3 个标题候选、含"授权"法律声明、
-      无敏感字样（平安/pingan）、无外露真实 IP（除 127.0.0.1）和域名（除 example.com）。
-
-      同时创建 tests/test_article2_format.py 格式校验测试（15+ 用例）。
-  expected_output: >
-      docs/articles/02-validation-loop-deep-dive.md +
-      tests/test_article2_format.py。
-  agent: doc_engineer
-
-  # ---- Lead 验收任务 ----
   - description: >
-      验收所有成员的交付物：
-
-      1. 运行全量测试：python3 -m pytest tests/ -v
-      2. 运行 ruff check src tests
-      3. 红线扫描：grep -r 'pingan\|LTAI\|AKIA' src tests docs（应为空）
-
-      如果测试失败，修复问题后重新运行，直到全绿再提交。
-      全部通过后：
-      - git add -A
-      - git commit -m "feat: PraisonAI 团队交付 — Tencent CAM 提权 + SSTI/Open Redirect 技能 + 文章2"
-      - git push origin main
-  expected_output: >
-      全量 pytest 绿 + ruff 绿 + 红线扫描干净 + 已推送 main。
-  agent: lead
+      验收所有交付物。运行 python3 -m pytest tests/ -v 全量测试。
+      运行 ruff check src tests。红线扫描 grep -r 'pingan\|LTAI\|AKIA' src tests docs（应为空）。
+      如有失败，修复后重新运行直到全绿。
+      全部通过后 git add -A && git commit -m "feat: PraisonAI 团队交付 — Tencent CAM 提权 + SSTI/Open Redirect + 文章2"
+      && git push origin main。
+    expected_output: >
+      全量 pytest 绿 + ruff 绿 + 红线干净 + 已推送 main.
+    agent: lead
