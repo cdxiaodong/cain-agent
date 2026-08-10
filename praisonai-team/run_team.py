@@ -40,6 +40,17 @@ _GUARD = _LoopGuard(LoopGuardConfig(
     no_progress_halt=25,
 ))
 
+from praisonaiagents.llm import LLM as _LLM
+_orig_get_response = _LLM.get_response
+
+
+def _patched_get_response(self, *args, **kwargs):
+    kwargs.setdefault("max_tool_calls_per_turn", 60)
+    return _orig_get_response(self, *args, **kwargs)
+
+
+_LLM.get_response = _patched_get_response
+
 import yaml
 from praisonaiagents import Agent, AgentTeam, Task, tool
 
@@ -47,11 +58,17 @@ from praisonaiagents import Agent, AgentTeam, Task, tool
 # ---- custom tools (file I/O + command exec) ----
 
 @tool
-def read_file(path: str) -> str:
-    """Read file content. Path can be relative to project root or absolute."""
+def read_file(path: str, offset: int = 0, limit: int = 0) -> str:
+    """Read file content. Path relative to project root or absolute.
+    offset: starting line (0-based). limit: max lines (0 = all)."""
     full = PROJECT_ROOT / path if not os.path.isabs(path) else Path(path)
     try:
-        return full.read_text(encoding="utf-8")
+        content = full.read_text(encoding="utf-8")
+        if offset or limit:
+            lines = content.splitlines()
+            end = offset + limit if limit else len(lines)
+            content = "\n".join(lines[offset:end])
+        return content
     except Exception as exc:
         return f"ERROR reading {path}: {exc}"
 
