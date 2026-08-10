@@ -1,5 +1,16 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-10 · PraisonAI 团队交付:腾讯云 CAM 提权 + SSTI/Open Redirect 技能 + 第二篇文章
+
+**本轮交付:PraisonAI AgentTeam (云模块工程师+技能工程师+文档工程师+监工) 合入 main。638 测试全绿。**
+
+- **腾讯云 CAM 提权路径分析**(`src/cain_agent/cloud/tencent_cam.py`):只读 Get/List API,5 条提权规则代码常量(AttachPolicyToUser/CreateUserLoginProfile/AddUserToGroup/CreateAccessKey/PassRole),支持 `cam:*` 通配展开,单实体失败容错;对齐阿里云 RAM 提权分析设计模式;40+ 单测全 mock
+- **SSTI 检测技能**(`skills/web/ssti/SKILL.md`):经典注入(Python Jinja2/PHP Smarty/Java Velocity)+ Blind XXE OOB 外带+ SSRF 利用+ XInclude/编码绕过;Payload 表+ 工具(Burp/curl)+ 输出格式;301 格式校验测试
+- **Open Redirect 检测技能**(`skills/web/open-redirect/SKILL.md`):URL 重定向检测(基于域名白名单/相对路径/Referer 验证);Payload 构造+ 工具+ 输出格式;339 格式校验测试
+- **第二篇传播文章**(`docs/articles/02-validation-loop-deep-dive.md`):「让 AI 自己查自己:渗透 Agent 的校验闭环设计」(3500 字);痛点(AI 幻觉漏洞责任风险)+ 方案(双 Agent 独立会话校验+ 四状态结构化输出)+ 实现(FindingValidator 执行层+ 去重指纹+ 规则表收口)+ 演示(假阳性漏洞如何被拦截);含 3 标题候选+ 授权法律声明;413 格式校验测试
+- **测试覆盖**:638 passed,2 skipped;新增 tencent_cam/SSTI/open_redirect/article2 测试模块;零真实凭证,零触网
+- **框架修复**(`praisonai-team/run_team.py`):loop guard 优化(每 agent 独立计时器,解决推理模型长轮次超时)
+
 ## 2026-08-10 · Day 10:云模块七厂商全覆盖 + OWASP Top10 技能补齐 + 文章定稿
 
 **本轮交付:三大云模块合入(AWS S3 + 腾讯云 COS + 华为云 OBS),两大 OWASP 技能补齐(CSRF + XXE),传播文章更新定稿。main 上全量测试全绿。**

@@ -33,10 +33,11 @@
 
 ## Phase 3 · 扩能+传播(2027.01-04)
 
-- [ ] OWASP Top10 技能补全 + framework 专项(2026-08-10,已完成 10/13:SQLi/XSS/SSRF/命令注入/文件上传/路径遍历/反序列化/信息泄露/CSRF/XXE)
-- [x] 云模块扩 AWS / 腾讯云 / Azure / 华为云 / GCP(2026-08-10,七大云厂商全覆盖)
+- [ ] OWASP Top10 技能补全 + framework 专项(2026-08-10,PraisonAI 交付后已完成 12/13:SQLi/XSS/SSRF/命令注入/文件上传/路径遍历/反序列化/信息泄露/CSRF/XXE/SSTI/Open Redirect;缺 文件包含)
+- [x] 云模块扩 AWS / 腾讯云 / Azure / 华为云 / GCP(2026-08-10,七大云厂商全覆盖;含腾讯云 CAM 提权检测)
 - [ ] IAM/RAM 提权路径图可视化
-- [ ] 2-3 篇技术文章 + Gitee 同步 + 社区运营
+- [x] 2-3 篇技术文章(2026-08-10,PraisonAI 交付第二篇「校验闭环设计」+ 第一篇「首个懂国产云」;缺第三篇 Benchmark 体系)
+- [ ] Gitee 同步 + 社区运营
 
 ## Phase 4 · 达标冲刺(2027.05-07)
 
