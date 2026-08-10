@@ -25,11 +25,20 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
 from praisonaiagents.escalation.loop_guard import LoopGuardConfig
-# Increase turn time limit for complex code generation with reasoning models
-LoopGuardConfig.max_time_per_turn = 600.0
-LoopGuardConfig.idempotent_halt_threshold = 30
-LoopGuardConfig.mutating_halt_threshold = 20
-LoopGuardConfig.no_progress_halt = 20
+# Custom loop-guard config for unattended code generation (long reasoning model turns).
+from praisonaiagents.escalation.loop_guard import LoopGuard as _LoopGuard
+_GUARD = _LoopGuard(LoopGuardConfig(
+    enabled=True,
+    max_time_per_turn=900.0,
+    idempotent_warn_threshold=10,
+    idempotent_block_threshold=20,
+    idempotent_halt_threshold=40,
+    mutating_warn_threshold=5,
+    mutating_block_threshold=10,
+    mutating_halt_threshold=30,
+    no_progress_warn=10,
+    no_progress_halt=25,
+))
 
 import yaml
 from praisonaiagents import Agent, AgentTeam, Task, tool
@@ -132,6 +141,8 @@ def build_team() -> AgentTeam:
             tools=shared_tools,
             **extra,
         )
+        # Override loop guard with relaxed limits for long reasoning turns
+        agents[key]._loop_guard = _GUARD
 
     _TASK_KW = {
         "description", "expected_output", "name", "tools", "context",
