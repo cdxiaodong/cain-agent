@@ -1,7 +1,7 @@
 """
 文章格式校验测试。
 
-验证 docs/articles/2026-08-draft-3-benchmark-system.md 符合技术文章发布规范：
+验证 docs/articles/03-benchmark-system.md 符合技术文章发布规范：
 - 字数 1800-3500 字
 - 3 个标题候选（发布时择一）
 - 含"授权"关键词
@@ -10,7 +10,7 @@
 - 无真实域名（允许 example.com 等示例域名）
 - 结构包含章节标题
 - 包含 BenchmarkExecutor 或基准测试相关内容
-- 包含五维指标描述
+- 包含四项核心指标描述
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 
 # 文章路径
 ARTICLE_PATH = (
-    Path(__file__).resolve().parent.parent / "docs" / "articles" / "2026-08-draft-3-benchmark-system.md"
+    Path(__file__).resolve().parent.parent / "docs" / "articles" / "03-benchmark-system.md"
 )
 
 # 敏感字样（禁止出现）
@@ -77,13 +77,12 @@ REAL_DOMAIN_INDICATORS = (
     "linkedin.com",
 )
 
-# 五维指标关键词
-FIVE_DIMENSION_METRICS = (
-    "准确率",
-    "召回率",
-    "F1",
-    "可复现性",
-    "覆盖深度",
+# 四项核心评测指标
+CORE_METRICS = (
+    "检出率",
+    "误报率",
+    "耗时",
+    "token",
 )
 
 
@@ -124,8 +123,8 @@ def test_article_line_count() -> None:
     """文章行数应在合理范围内。"""
     text = _read_article()
     lines = text.splitlines()
-    # 允许 200-500 行之间
-    assert 200 <= len(lines) <= 500, f"文章行数异常: {len(lines)} 行"
+    # 技术文章应有足够结构，同时避免用空行人为堆高篇幅。
+    assert 100 <= len(lines) <= 500, f"文章行数异常: {len(lines)} 行"
 
 
 def test_article_word_count() -> None:
@@ -277,16 +276,16 @@ def test_contains_benchmark_concept() -> None:
     assert found, "文章缺少基准测试相关概念"
 
 
-def test_contains_five_dimension_metrics() -> None:
-    """文章必须包含五维指标描述。"""
+def test_contains_four_core_metrics() -> None:
+    """文章必须包含四项核心指标。"""
     text = _read_article()
-    # 检查所有五个指标都出现
-    found_metrics = [metric for metric in FIVE_DIMENSION_METRICS if metric in text]
-    assert len(found_metrics) >= 5, f"五维指标描述不完整，找到: {found_metrics}"
+    # 检查四项核心指标都出现
+    found_metrics = [metric for metric in CORE_METRICS if metric.lower() in text.lower()]
+    assert len(found_metrics) == 4, f"四指标描述不完整，找到: {found_metrics}"
 
 
-def test_five_dimension_in_table() -> None:
-    """五维指标应在表格或列表中清晰呈现。"""
+def test_four_metrics_in_table() -> None:
+    """四指标应在表格或列表中清晰呈现。"""
     text = _read_article()
     # 检查是否有包含指标的表格
     table_with_metrics = re.search(
@@ -296,9 +295,24 @@ def test_five_dimension_in_table() -> None:
     )
     # 或者检查是否有包含指标的列表
     list_with_metrics = all(
-        metric in text for metric in FIVE_DIMENSION_METRICS
+        metric.lower() in text.lower() for metric in CORE_METRICS
     )
-    assert table_with_metrics is not None or list_with_metrics, "五维指标未在表格或列表中清晰呈现"
+    assert table_with_metrics is not None or list_with_metrics, "四指标未在表格或列表中清晰呈现"
+
+
+def test_contains_both_benchmark_suites() -> None:
+    """文章必须说明公开基准和自建云靶场的双重验证。"""
+    text = _read_article()
+    assert "XBOW" in text
+    assert "vuln-tf" in text
+
+
+def test_seven_cloud_results_are_not_fabricated() -> None:
+    """未完成真实跑分时，七类平台必须明确标为未测量。"""
+    text = _read_article()
+    platforms = ("AWS", "Azure", "GCP", "阿里云", "腾讯云", "华为云", "Kubernetes")
+    assert all(platform in text for platform in platforms)
+    assert text.count("未测量") >= len(platforms)
 
 
 def test_contains_legal_notice() -> None:
@@ -319,7 +333,7 @@ def test_legal_notice_contains_authorization() -> None:
     text = _read_article()
     # 查找法律声明部分
     legal_match = re.search(
-        r"##\s*(?:法律声明|授权声明|免责声明).*(?=$|\n##\s)",
+        r"##\s*(?:法律声明|授权声明|授权测试法律声明|免责声明).*(?=$|\n##\s)",
         text,
         re.DOTALL | re.IGNORECASE
     )
