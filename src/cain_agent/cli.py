@@ -6,6 +6,10 @@ Commands:
 
 Security: ``run --target`` on a public host without ``--i-have-authorization``
 is rejected before anything starts. Credentials are never printed.
+
+经典 Route A:``run`` 注入三阶段真实 handler——recon/test 共享发现 executor,
+report 走独立校验 session 的 FindingsPipeline(发现≠校验,§3.3 防自证);
+技能经仓库 SkillLoader 按阶段加载,缺失自动降级为无技能 prompt。
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ import sys
 from typing import Any
 
 from cain_agent import __version__
-from cain_agent.orchestrator import Orchestrator
+from cain_agent.orchestrator import Orchestrator, StageHandler
 from cain_agent.workspace import SCOPE_FILE, Workspace
 
 __all__ = ["main", "build_parser", "is_local_target"]
@@ -122,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _build_executor(args: argparse.Namespace) -> Any:
-    """Construct the SDKExecutor for a run.
+    """Construct the discovery SDKExecutor for a run.
 
     Kept as a standalone function so tests can monkeypatch it to avoid real
     Agent starts (zero token spend).
@@ -134,6 +138,55 @@ def _build_executor(args: argparse.Namespace) -> Any:
         idle_timeout=args.idle_timeout,
         total_budget=args.total_budget,
     )
+
+
+def _build_validation_executor(args: argparse.Namespace) -> Any:
+    """Construct the validation SDKExecutor — a distinct session from discovery.
+
+    只读校验通道:零工具白名单(SDKExecutor 默认),校验 Agent 只输出结构化
+    JSON,不执行任何验证性操作。与 ``_build_executor`` 分开构造,保证
+    FindingsPipeline 的「发现者≠校验者」约束在结构上成立;分开成函数也便于
+    测试独立 monkeypatch(零真实 Agent 启动)。
+    """
+    from cain_agent.executor import SDKExecutor
+
+    return SDKExecutor(
+        allowed_tools=[],  # 只读校验通道:默认零工具
+        idle_timeout=args.idle_timeout,
+        total_budget=args.total_budget,
+    )
+
+
+def _build_handlers(
+    executor: Any,
+    validation_executor: Any,
+    workspace: Workspace,
+) -> dict[str, StageHandler]:
+    """构造经典 Route A 的三阶段真实 handler,供 Orchestrator 注入。
+
+    - recon / test 共享「发现 executor」;report 经 ``make_report_handler``
+      驱动 FindingsPipeline,校验走独立 session——发现与校验永不共享 session。
+    - 技能加载用仓库 SkillLoader + 默认 ``skills/`` 根(既有约定),阶段零技能
+      命中自动降级为无技能 prompt,不炸。
+    - 独立函数便于测试逐件 monkeypatch / spy,零真实 Agent 启动。
+    """
+    from cain_agent.handlers import SkillLoader, make_recon_handler, make_test_handler
+    from cain_agent.pipeline import FindingsPipeline, make_report_handler
+
+    skill_loader = SkillLoader()  # 仓库 skills/ 根,既有约定
+    recon_handler = make_recon_handler(executor, skill_loader)
+    test_handler = make_test_handler(executor, skill_loader)
+    pipeline = FindingsPipeline(
+        workspace,
+        discovery_executor=executor,
+        validation_executor=validation_executor,
+    )
+    report_handler = make_report_handler(pipeline)
+    return {
+        "recon": recon_handler,
+        "test": test_handler,
+        "report": report_handler,
+    }
 
 
 def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
@@ -177,7 +230,7 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print("\n  (dry-run: 不启动 Agent)", file=stdout)
         return EXIT_OK
 
-    # Build executor and run orchestrator pipeline.
+    # Build executors, real handlers, then run the orchestrator pipeline.
     try:
         executor = _build_executor(args)
     except Exception as exc:
@@ -185,7 +238,25 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         return EXIT_ARG_ERROR
 
     try:
-        orchestrator = Orchestrator(executor, workspace)
+        validation_executor = _build_validation_executor(args)
+    except Exception as exc:
+        print(f"错误: 校验 executor 构造失败: {exc}", file=sys.stderr)
+        return EXIT_ARG_ERROR
+
+    try:
+        handlers = _build_handlers(executor, validation_executor, workspace)
+    except Exception as exc:
+        print(f"错误: handler 构造失败: {exc}", file=sys.stderr)
+        return EXIT_ARG_ERROR
+
+    # 构造与执行分开兜底:构造失败在 orchestrator 赋值前返回,绝不引用未绑定局部变量。
+    try:
+        orchestrator = Orchestrator(executor, workspace, handlers=handlers)
+    except Exception as exc:
+        print(f"错误: orchestrator 构造失败: {exc}", file=sys.stderr)
+        return EXIT_ARG_ERROR
+
+    try:
         final_state = orchestrator.run()
     except KeyboardInterrupt:
         print("\n中断: 用户取消 (partial results in workspace)", file=sys.stderr)
@@ -193,7 +264,7 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
     except Exception as exc:
         # Budget/timeout interruptions produce partial results.
         print(f"\n中断: {exc} (partial results in workspace)", file=sys.stderr)
-        final_state = getattr(orchestrator, "load_state", lambda: {})()
+        final_state = orchestrator.load_state()
 
     # Summary: stage artifact paths.
     print("\nCain run 完成\n", file=stdout)

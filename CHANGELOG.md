@@ -1,6 +1,18 @@
 # CHANGELOG — cain-agent
 
-## 2026-08-10 · PraisonAI 团队交付:腾讯云 CAM 提权 + SSTI/Open Redirect 技能 + 第二篇文章
+## 2026-08-11 · 经典 Route A CLI 真实 handler 接线 + 双会话校验
+
+- **经典 Route A 接线**(`src/cain_agent/cli.py`):`cmd_run` 经 `_build_handlers`
+  注入三阶段真实 handler——recon/test 共享发现 executor,report 经
+  `make_report_handler` 驱动独立校验 session 的 `FindingsPipeline`
+  (发现≠校验,双会话防自证);BreachWeave 多 Agent 桥 `create_multi_agent_handlers`
+  保持**未接线**(经典路径为默认),report 仍只落占位产物 `report-placeholder.json`
+  (真实报告 markdown 后续接入)
+- **测试**(`tests/test_cli_run.py`):新增双 executor 独立构造、FindingsPipeline
+  收到不同对象、端到端产物契约与构造失败兜底断言;公网 target 夹具改用合成域名
+  (`example.com`/`public.example.com`),未授权路径钉死构造器不得触发,零真实 IP
+
+## 2026-08-10 · 多 Agent 团队交付:腾讯云 CAM 提权 + SSTI/Open Redirect 技能 + 第二篇文章
 
 
 - **腾讯云 CAM 提权路径分析**(`src/cain_agent/cloud/tencent_cam.py`):只读 Get/List API,5 条提权规则代码常量(AttachPolicyToUser/CreateUserLoginProfile/AddUserToGroup/CreateAccessKey/PassRole),支持 `cam:*` 通配展开,单实体失败容错;对齐阿里云 RAM 提权分析设计模式;40+ 单测全 mock
@@ -8,7 +20,6 @@
 - **Open Redirect 检测技能**(`skills/web/open-redirect/SKILL.md`):URL 重定向检测(基于域名白名单/相对路径/Referer 验证);Payload 构造+ 工具+ 输出格式;339 格式校验测试
 - **第二篇传播文章**(`docs/articles/02-validation-loop-deep-dive.md`):「让 AI 自己查自己:渗透 Agent 的校验闭环设计」(3500 字);痛点(AI 幻觉漏洞责任风险)+ 方案(双 Agent 独立会话校验+ 四状态结构化输出)+ 实现(FindingValidator 执行层+ 去重指纹+ 规则表收口)+ 演示(假阳性漏洞如何被拦截);含 3 标题候选+ 授权法律声明;413 格式校验测试
 - **测试覆盖**:638 passed,2 skipped;新增 tencent_cam/SSTI/open_redirect/article2 测试模块;零真实凭证,零触网
-- **框架修复**(`praisonai-team/run_team.py`):loop guard 优化(每 agent 独立计时器,解决推理模型长轮次超时)
 
 ## 2026-08-10 · Day 10:云模块七厂商全覆盖 + OWASP Top10 技能补齐 + 文章定稿
 

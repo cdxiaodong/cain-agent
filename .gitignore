@@ -5,7 +5,5 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
-.praisonai/
-praisonai-team/team_run.log
 *.bak
 tmp_policy_actions.txt
