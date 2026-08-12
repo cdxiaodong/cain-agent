@@ -1,5 +1,22 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-12 · CLI 真实 smoke 端到端打通 + 授权门移除 + README 重写
+
+- **真实 smoke 打通**(`src/cain_agent/cli.py`):对自建靶场跑通 recon→test→report
+  完整流水线(非 dry-run);recon 真实识别 Next.js/nginx 技术栈并定位
+  `POST /api/wishes` 文件上传攻击面,主动提示 test 勿 fuzz SPA catch-all GET 路径
+- **修 smoke 逼出的两个 bug**:
+  - `is_local_target` 兼容带 scheme/端口/IPv6 的本地与私网地址(剥 scheme+端口再判)
+  - 新增 `_scope_entry`:写 scope 前把 URL 归一化为裸 host,修复 `http://ip:port/path`
+    目标导致 Orchestrator scope 校验报错
+- **授权门移除**:删除 `--i-have-authorization`,公网目标直接放行,scope 仍由
+  PreToolUse 钩子强制;同步中英 README 与测试
+- **中英 README 重写**:加 ASCII 架构图、真实 CLI 示例、结构性安全说明,状态对齐
+  当前 MVP;删除冗余盘点文件 `README-SKILLS.md` / `SKILL-SUMMARY.md`
+- **IAM/RAM 提权路径图**合入 main:有向图建模 + DOT/JSON 导出 + BFS 路径查找
+- **遗留**:scope 白名单对带端口目标(`:3333`)匹配未归一,写操作被默认拒绝误伤,
+  待修
+
 ## 2026-08-11 · 经典 Route A CLI 真实 handler 接线 + 双会话校验
 
 - **经典 Route A 接线**(`src/cain_agent/cli.py`):`cmd_run` 经 `_build_handlers`
