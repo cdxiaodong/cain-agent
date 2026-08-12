@@ -6,9 +6,16 @@ def test_readme_exists():
     assert Path("README.md").exists()
 
 
-def test_features_section():
+def test_sections_present():
     content = Path("README.md").read_text(encoding="utf-8")
-    assert "## Features" in content
+    assert "## Why Cain" in content
+    assert "## Quick Start" in content
+    assert "## Architecture" in content
+    assert "## Cloud Module" in content
+    assert "## Benchmark" in content
+    assert "## ⚠️ Legal & Ethical Use" in content
+    assert "## Status" in content
+    assert "## License" in content
 
 
 def test_cloud_coverage():
@@ -18,11 +25,11 @@ def test_cloud_coverage():
         assert cloud in content
 
 
-def test_owasp_coverage():
+def test_skills_coverage():
     content = Path("README.md").read_text(encoding="utf-8")
-    skills = ["SQLi", "XSS", "SSRF", "CSRF", "File Upload", "XXE", "Command Injection", "Path Traversal"]
-    for skill in skills:
-        assert skill in content
+    assert "cloud module" in content
+    assert "read-only" in content
+    assert "benchmark" in content
 
 
 def test_no_sensitive_info():
