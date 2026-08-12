@@ -42,24 +42,31 @@ EXIT_ARG_ERROR = 2
 def is_local_target(target: str) -> bool:
     """True if *target* is loopback / localhost / .local — no auth confirmation needed."""
     target = target.strip().lower()
-    if target in _LOCAL_HOSTNAMES or target in _LOOPBACK_IPS:
-        return True
-    if any(target.endswith(suffix) for suffix in _LOCAL_SUFFIXES):
-        return True
-    # Private / link-local / loopback IP ranges
+    # Strip URL scheme (http://, https://) and any path so that
+    # "http://127.0.0.1:8080" is judged the same as "127.0.0.1:8080".
+    if "://" in target:
+        target = target.split("://", 1)[1]
+    target = target.split("/", 1)[0]
+    # Pure IP (v4 or v6, e.g. "::1") — judge directly, never port-strip.
     try:
         ip = ipaddress.ip_address(target)
         return ip.is_private or ip.is_loopback or ip.is_link_local
     except ValueError:
         pass
-    # Strip port if present for IP check
-    if ":" in target:
-        host = target.rsplit(":", 1)[0]
-        try:
-            ip = ipaddress.ip_address(host)
-            return ip.is_private or ip.is_loopback or ip.is_link_local
-        except ValueError:
-            pass
+    # Not a bare IP: strip a trailing port so hostname/suffix/IP checks see the
+    # bare host (e.g. "localhost:3000" -> "localhost", "[::1]:8080" -> "[::1]").
+    host = target.rsplit(":", 1)[0] if ":" in target else target
+    host = host.strip("[]")
+    if host in _LOCAL_HOSTNAMES or host in _LOOPBACK_IPS:
+        return True
+    if any(host.endswith(suffix) for suffix in _LOCAL_SUFFIXES):
+        return True
+    # Private / link-local / loopback IP ranges (host[:port] form)
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        pass
     return False
 
 
