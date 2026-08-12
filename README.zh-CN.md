@@ -12,10 +12,12 @@
 [English](README.md) · **简体中文**
 
 **Cain** 是一个面向**真实授权安全评估**的 AI 渗透测试工程师——不是解靶场题的 CTF 玩具。
-它能理解业务语义、维护全局攻击状态机、在真实 WAF / 风控环境下动态调整策略，并内置覆盖
-AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 的**云渗透模块**。
+它走确定性的攻击流水线，用**工程约束**（而非 AI 自律）强制 scope，并内置覆盖
+AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 的**云渗透模块**——含其他项目都不覆盖的国产云。
 
 基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) 构建。
+
+---
 
 ## 为什么是 Cain
 
@@ -26,19 +28,113 @@ AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 的**云渗透模块**。
 | 对抗环境 | 无 WAF、无限流 | 真实 WAF / 风控下的动态策略调整 |
 | 交付物 | 一个 flag | 可审计的证据链 + 可复现 PoC + 修复建议 |
 
-## 核心设计
+---
+
+## 快速上手
+
+```bash
+git clone https://github.com/cdxiaodong/cain-agent
+cd cain-agent
+pip install -e .          # 或: uv pip install -e .
+
+cain-agent --version
+```
+
+### 给 AI Agent 的一键安装指令
+
+> **"安装 cain-agent 到用户本地 Python 环境，克隆仓库 https://github.com/cdxiaodong/cain-agent，用 pip/uv 装 editable 模式，验证 CLI 可执行"**
+
+这一条指令即可让任意 AI agent 完成：
+1. 克隆仓库
+2. 以 editable 模式安装（`pip install -e .` 或 `uv pip install -e .`）
+3. 运行 `cain-agent --version` 验证安装
+
+### 对已授权目标执行
+
+公网目标必须显式携带授权标志——该声明会写入工作区审计日志：
+
+```bash
+cain-agent run \
+  --target https://app.example.com \
+  --i-have-authorization \
+  --total-budget 1800
+```
+
+**参数：** `--target`（必填）· `--workspace`（状态目录，默认 `./workspace`）· `--total-budget`（墙钟秒数）· `--idle-timeout`（单步秒数）· `--i-have-authorization`（非公网目标必填）
+
+---
+
+## 架构
 
 > **用确定性工程约束 Agent 的自由度**——阶段流转、scope 校验、危险操作熔断是硬工程约束；
 > 路径选择与证据分析交给 Agent。
 
-- **Orchestrator** — 确定性的 Python 状态机(侦察 → 测试 → 框架 → 报告)
-- **双 LLM 分工** — Planner(策略)/ Executor(Claude Agent SDK，战术)
-- **基于 Hook 的安全机制** — PreToolUse scope 守卫、凭证脱敏、token 预算熔断
-- **工作区外置记忆** — 全部状态落盘；可崩溃恢复、可审计
-- **校验闭环** — finder / validator Agent 分离，4 状态结构化判定
-- **云模块(独家)** — IAM 提权路径分析、存储暴露(S3/OSS/COS/Blob/GCS)、元数据 SSRF 检测、
-  无服务器滥用——含其他项目都不覆盖的国产云
-- **内置 66 个云攻击技能** — 见 [`skills/`](skills/)
+```
+                    ┌──────────────────────────────────────────────┐
+                    │                 Cain CLI                     │
+                    │   cain-agent run --target <t> [--dry-run]    │
+                    └───────────────────┬──────────────────────────┘
+                                        │
+                            ┌───────────▼───────────┐
+                            │        授权门          │  公网目标 → --i-have-authorization
+                            └───────────┬───────────┘
+                                        │
+                            ┌───────────▼───────────┐
+                            │      Orchestrator      │  确定性状态机
+                            │  recon → test → report │  可崩溃恢复 · 受 scope 约束
+                            └──┬────────┬────────┬──┘
+                               │        │        │
+              ┌────────────────▼┐   ┌───▼────┐  ┌▼──────────────┐
+              │  Recon  Handler │   │  Test  │  │    Report      │
+              │  (技能引导)      │   │Handler │  │   Handler      │
+              └────────┬────────┘   └───┬────┘  └───────┬────────┘
+                       │                │                │
+                       └────────┬───────┴───────┬────────┘
+                                │               │
+                    ┌───────────▼──────┐   ┌────▼───────────────┐
+                    │   SDK Executor    │   │  Findings Pipeline  │
+                    │ (Planner/Executor)│   │ finder → validator  │  独立会话
+                    │  allowed_tools=[] │   │ (永不共享上下文)     │
+                    └─────────┬─────────┘   └─────────────────────┘
+                              │
+        ┌─────────────────────┼──────────────────────┐
+        │                     │                      │
+┌───────▼────────┐  ┌─────────▼─────────┐  ┌─────────▼────────┐
+│  PreToolUse     │  │   Readonly Guard   │  │     云模块        │
+│  Scope 守卫     │  │  46 个只读         │  │  IAM 提权 ·       │
+│  + 凭证脱敏     │  │  安全工具          │  │  存储 · SSRF      │
+└─────────────────┘  └────────────────────┘  └──────────────────┘
+
+全部状态以文件形式落在工作区（外置记忆）——端到端可崩溃恢复、可审计。
+```
+
+**安全是结构性的，而非行为性的：**
+- **授权门** —— 公网目标一律拒绝，除非显式携带 `--i-have-authorization`；声明写入工作区审计记录。
+- **Scope 强制** —— `PreToolUse` 钩子拦截任何目标落在 `scope.yaml` 之外的工具调用；由配置强制，而非靠模型自觉。
+- **只读工具链** —— 内置 46 个只读安全工具（侦察 / 扫描 / 验证 / 后渗透 / 报告），每个工具带独立的 `dangerous_flags` 黑名单；写入 / 利用 / 持久化操作（`POST`、`PUT`、`DELETE`、`aws rm/mv/cp` 等）在执行前即被拒绝。
+- **发现者 ≠ 校验者** —— 发现与校验跑在**互不共享上下文的独立 Agent 会话**，结论无法自我确认；判定为 4 状态结构化输出。
+- **凭证脱敏** —— 脱敏钩子在落盘前剥离机密信息。
+
+---
+
+## 云模块 —— 别人没做的那部分
+
+```
+aws_s3 · azure_blob · gcp_gcs · aliyun_oss · tencent_cos · huawei_obs   →  存储暴露
+aws IAM · tencent_cam · aliyun_ram                                        →  提权路径分析
+k8s_rbac · docker_image                                                 →  集群与镜像态势
+云元数据 SSRF（覆盖 7 家厂商的 IMDS / 169.254.169.254）
+```
+
+**IAM / RAM 提权路径图** —— 将 实体 → 提权动作 → 高权限目标 建模为有向图，导出 **DOT / JSON** 供前端渲染，并用 BFS 查找提权路径。由现有 `aliyun_ram` / `tencent_cam` 规则集驱动。
+
+## 基准评测 —— 拿证据，不靠口号
+
+- **自建 vulnerable-terraform 靶场**（`bench/aliyun-vuln-tf/`），每个场景带预期检出对照。
+- **Benchmark 执行器**（`bench/run_benchmark.py`）按四指标跑分：检出率、误报率、墙钟耗时、token 成本——不编造百分比，未测结果明确标注「未测量」。
+- **44 个测试文件**，覆盖云模块、技能、流水线与 CLI。
+
+---
 
 ## ⚠️ 合规与伦理使用
 
@@ -47,7 +143,7 @@ Cain 严格用于**已授权的安全测试**——你自己的环境，或持�
 
 ## 现状
 
-Phase 0 —— 项目骨架。详见 [ROADMAP.md](ROADMAP.md) 与 [CHANGELOG.md](CHANGELOG.md)。
+核心 MVP 已可用——确定性流水线、安全钩子、云模块与基准评测均已就位。后续规划见 [ROADMAP.md](ROADMAP.md)，近期进展见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可证
 
