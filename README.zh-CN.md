@@ -49,18 +49,17 @@ cain-agent --version
 2. 以 editable 模式安装（`pip install -e .` 或 `uv pip install -e .`）
 3. 运行 `cain-agent --version` 验证安装
 
-### 对已授权目标执行
+### 对目标执行
 
-公网目标必须显式携带授权标志——该声明会写入工作区审计日志：
+目标会写入 `scope.yaml`，并在每次工具调用时强制校验：
 
 ```bash
 cain-agent run \
   --target https://app.example.com \
-  --i-have-authorization \
   --total-budget 1800
 ```
 
-**参数：** `--target`（必填）· `--workspace`（状态目录，默认 `./workspace`）· `--total-budget`（墙钟秒数）· `--idle-timeout`（单步秒数）· `--i-have-authorization`（非公网目标必填）
+**参数：** `--target`（必填）· `--workspace`（状态目录，默认 `./workspace`）· `--total-budget`（墙钟秒数）· `--idle-timeout`（单步秒数）
 
 ---
 
@@ -76,7 +75,7 @@ cain-agent run \
                     └───────────────────┬──────────────────────────┘
                                         │
                             ┌───────────▼───────────┐
-                            │        授权门          │  公网目标 → --i-have-authorization
+                            │      Scope 初始化      │  目标 → scope.yaml
                             └───────────┬───────────┘
                                         │
                             ┌───────────▼───────────┐
@@ -109,7 +108,6 @@ cain-agent run \
 ```
 
 **安全是结构性的，而非行为性的：**
-- **授权门** —— 公网目标一律拒绝，除非显式携带 `--i-have-authorization`；声明写入工作区审计记录。
 - **Scope 强制** —— `PreToolUse` 钩子拦截任何目标落在 `scope.yaml` 之外的工具调用；由配置强制，而非靠模型自觉。
 - **只读工具链** —— 内置 46 个只读安全工具（侦察 / 扫描 / 验证 / 后渗透 / 报告），每个工具带独立的 `dangerous_flags` 黑名单；写入 / 利用 / 持久化操作（`POST`、`PUT`、`DELETE`、`aws rm/mv/cp` 等）在执行前即被拒绝。
 - **发现者 ≠ 校验者** —— 发现与校验跑在**互不共享上下文的独立 Agent 会话**，结论无法自我确认；判定为 4 状态结构化输出。

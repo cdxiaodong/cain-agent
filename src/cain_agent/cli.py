@@ -4,8 +4,8 @@ Commands:
   run    Initialize workspace + scope and drive the orchestrator pipeline.
   --version  Print version and exit.
 
-Security: ``run --target`` on a public host without ``--i-have-authorization``
-is rejected before anything starts. Credentials are never printed.
+Security: target scope is written to ``scope.yaml`` and enforced on every tool
+call; credentials are never printed.
 
 经典 Route A:``run`` 注入三阶段真实 handler——recon/test 共享发现 executor,
 report 走独立校验 session 的 FindingsPipeline(发现≠校验,§3.3 防自证);
@@ -122,12 +122,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="initialize workspace + scope and print execution plan, don't start Agent",
     )
-    run.add_argument(
-        "--i-have-authorization",
-        action="store_true",
-        dest="i_have_authorization",
-        help="confirm you have written authorization for the target (required for public targets)",
-    )
 
     return parser
 
@@ -205,17 +199,6 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print("错误: --target 不能为空", file=sys.stderr)
         return EXIT_ARG_ERROR
 
-    # Authorization gate: public targets require explicit confirmation.
-    if not is_local_target(target) and not args.i_have_authorization:
-        print(
-            f"⚠️  目标 {target!r} 不是本地/私网地址。\n"
-            "    对公网目标执行测试需要书面授权。\n"
-            "    如果你已获得授权,请加 --i-have-authorization 标志重新运行。\n"
-            "    授权声明将被记录在 workspace 执行历史中。",
-            file=sys.stderr,
-        )
-        return EXIT_ARG_ERROR
-
     # Initialize workspace + scope.
     try:
         workspace = Workspace(args.workspace)
@@ -232,8 +215,6 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print(f"  授权范围: {workspace.path(SCOPE_FILE).resolve()}", file=stdout)
         print("  阶段:     recon → test → report", file=stdout)
         print(f"  工具白名单: {DEFAULT_ALLOWED_TOOLS}", file=stdout)
-        if args.i_have_authorization:
-            print("  授权确认: ✅ 已声明授权", file=stdout)
         print("\n  (dry-run: 不启动 Agent)", file=stdout)
         return EXIT_OK
 

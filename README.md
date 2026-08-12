@@ -19,6 +19,17 @@ Built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 
 ---
 
+## Features
+
+- 🎯 **Real-world Focus**: Business-logic flaws, auth chains, cloud misconfigurations
+- ☁️ **Cloud Native**: AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 coverage
+- 🔒 **Safety First**: Read-only by default, scope enforcement, credential redaction
+- 🤖 **AI-Powered**: Claude Agent SDK with deterministic orchestration
+- 📊 **Benchmark**: self-built vulnerable-terraform evaluation, four-metric scoring
+- 🛡️ **OWASP Top 10**: SQLi, XSS, SSRF, CSRF, File Upload, XXE, Command Injection, Path Traversal
+
+---
+
 ## Quick Start
 
 ```bash
@@ -38,18 +49,17 @@ This single prompt instructs any AI agent to:
 2. Install in editable mode (`pip install -e .` or `uv pip install -e .`)
 3. Verify installation by running `cain-agent --version`
 
-### Run against an authorized target
+### Run against a target
 
-Public targets require an explicit authorization flag — it is recorded in the workspace audit log:
+The target is written into `scope.yaml` and enforced on every tool call:
 
 ```bash
 cain-agent run \
   --target https://app.example.com \
-  --i-have-authorization \
   --total-budget 1800
 ```
 
-**Flags:** `--target` (required) · `--workspace` (state dir, default `./workspace`) · `--total-budget` (wall-clock seconds) · `--idle-timeout` (per-step seconds) · `--i-have-authorization` (required for non-local targets)
+**Flags:** `--target` (required) · `--workspace` (state dir, default `./workspace`) · `--total-budget` (wall-clock seconds) · `--idle-timeout` (per-step seconds)
 
 ---
 
@@ -64,7 +74,7 @@ cain-agent run \
                     └───────────────────┬──────────────────────────┘
                                         │
                             ┌───────────▼───────────┐
-                            │   Authorization Gate   │  public target → --i-have-authorization
+                            │    Scope Bootstrap     │  target → scope.yaml
                             └───────────┬───────────┘
                                         │
                             ┌───────────▼───────────┐
@@ -98,7 +108,6 @@ crash-resumable and auditable end-to-end.
 ```
 
 **Safety is structural, not behavioral:**
-- **Authorization gate** — public targets are refused unless `--i-have-authorization` is passed; the declaration is written into the workspace audit trail.
 - **Scope enforcement** — a `PreToolUse` hook blocks any tool call whose target falls outside `scope.yaml`; scope is enforced by configuration, not by the model's good behavior.
 - **Read-only toolchain** — 46 built-in security tools (recon / scan / verify / post / report), each with a per-tool `dangerous_flags` blacklist; write/exploit/persist operations (`POST`, `PUT`, `DELETE`, `aws rm/mv/cp`, …) are rejected before execution.
 - **Finder ≠ Validator** — discovery and validation run in **separate agent sessions** that never share context, so a finding can't be self-confirmed. Verdicts are 4-state structured output.

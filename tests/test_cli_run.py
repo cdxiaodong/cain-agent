@@ -154,83 +154,37 @@ class TestDryRun:
         )
         assert called == []  # 三个构造器一律不得触发
 
-    def test_dry_run_public_target_needs_auth(
+    def test_dry_run_public_target_allowed(
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         tmp_path: Path,
     ) -> None:
-        """dry-run 对公网 target 仍需授权标志。"""
+        """dry-run 对公网 target 直接放行（无授权门）。"""
         code, out, err = _run_cli_captured(
             ["run", "--target", "example.com", "--workspace", str(tmp_path / "ws"), "--dry-run"],
             monkeypatch,
             capsys,
         )
-        assert code == 2
-        assert "授权" in err or "authorization" in err.lower()
-
-    def test_dry_run_public_with_auth(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-        tmp_path: Path,
-    ) -> None:
-        """dry-run + 公网 target + --i-have-authorization → 通过。"""
-        ws = tmp_path / "ws"
-        code, out, _ = _run_cli_captured(
-            [
-                "run", "--target", "example.com",
-                "--workspace", str(ws),
-                "--dry-run",
-                "--i-have-authorization",
-            ],
-            monkeypatch,
-            capsys,
-        )
         assert code == 0
-        assert "授权确认" in out
+        assert "执行计划" in out
 
 
 # ── authorization gate ──────────────────────────────────────────────────────
 
 
 class TestAuthorizationGate:
-    def test_public_target_without_auth_rejected(
+    def test_public_target_proceeds(
         self,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
         tmp_path: Path,
     ) -> None:
-        """公网 target 无 --i-have-authorization → exit 2,且绝不触发任何构造器。"""
-        # 未授权路径必须被授权门拦下:三个构造器一旦被调用即失败(证明零 SDK 启动)。
-        for attr in ("_build_executor", "_build_validation_executor", "_build_handlers"):
-            monkeypatch.setattr(
-                f"cain_agent.cli.{attr}",
-                lambda *a, name=attr: pytest.fail(f"{name} 不得被调用(公网未授权)"),
-            )
-        code, out, err = _run_cli_captured(
-            ["run", "--target", "example.com", "--workspace", str(tmp_path / "ws")],
-            monkeypatch,
-            capsys,
-        )
-        assert code == 2
-        assert "授权" in err or "authorization" in err.lower()
-
-    def test_public_target_with_auth_proceeds(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-        tmp_path: Path,
-    ) -> None:
-        """公网 target + --i-have-authorization → 不被授权门拦(后续走 executor 替身)。"""
+        """公网 target 直接放行（无授权门），走 executor 替身。"""
         _mock_executors(monkeypatch)
         ws = tmp_path / "ws"
         code, out, err = _run_cli_captured(
-            [
-                "run", "--target", "public.example.com",
-                "--workspace", str(ws),
-                "--i-have-authorization",
-            ],
+            ["run", "--target", "public.example.com", "--workspace", str(ws)],
             monkeypatch,
             capsys,
         )
@@ -638,4 +592,3 @@ class TestBuildParser:
         assert args.idle_timeout == 300.0
         assert args.total_budget is None
         assert args.dry_run is False
-        assert args.i_have_authorization is False
