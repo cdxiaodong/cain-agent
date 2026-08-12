@@ -70,6 +70,29 @@ def is_local_target(target: str) -> bool:
     return False
 
 
+def _scope_entry(target: str) -> str:
+    """Normalize a ``--target`` value into a Scope-legal ``in_scope`` entry.
+
+    Scope accepts bare domains, wildcards, bare IPs and CIDR — not URLs. So a
+    full URL like ``http://103.236.66.228:3333/`` is reduced to its bare host
+    (``103.236.66.228``); plain domains / IPs pass through unchanged.
+    """
+    t = target.strip().lower()
+    if "://" in t:
+        t = t.split("://", 1)[1]
+    t = t.split("/", 1)[0]
+    # Strip a trailing port for host:port form (but leave bare IPv6 like ::1 —
+    # it parses as an IP network already, so no port-strip).
+    try:
+        ipaddress.ip_address(t)
+        return t  # bare IP / IPv6 — already Scope-legal
+    except ValueError:
+        pass
+    if ":" in t:
+        t = t.rsplit(":", 1)[0].strip("[]")
+    return t
+
+
 def _write_scope_yaml(workspace: Workspace, target: str) -> None:
     """Write a scope.yaml with *target* as the sole in_scope entry."""
     scope_path = workspace.path(SCOPE_FILE)
@@ -78,7 +101,7 @@ def _write_scope_yaml(workspace: Workspace, target: str) -> None:
         f"# Target: {target}\n"
         "# ⚠️  仅限对【自有资产】或【已获得书面授权】的目标进行测试。\n\n"
         "in_scope:\n"
-        f"  - {target}\n"
+        f"  - {_scope_entry(target)}\n"
         "out_of_scope: []\n"
     )
     scope_path.write_text(content, encoding="utf-8")
