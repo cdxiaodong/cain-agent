@@ -12,17 +12,23 @@ from __future__ import annotations
 
 import threading
 
+from cain_agent.multi_agent.memory import (
+    MemoryKind,
+    MemorySearchResult,
+    SemanticMemory,
+)
 from cain_agent.multi_agent.types import Finding, Idea, Memory
 
 
 class Blackboard:
     """Agent 通信黑板：线程安全的共享状态。"""
 
-    def __init__(self) -> None:
+    def __init__(self, semantic_memory: SemanticMemory | None = None) -> None:
         self._lock = threading.RLock()
-        self._memory = Memory()           # 客观事实（只增）
+        self._memory = Memory()  # 客观事实（只增）
         self._ideas: dict[str, Idea] = {}  # 主观方向（可更新状态）
         self._subscribers: dict[str, list[str]] = {}  # event -> solver_ids
+        self.semantic_memory = semantic_memory or SemanticMemory()
 
     # ---- Memory（事实，只增不改） ----
 
@@ -30,6 +36,7 @@ class Blackboard:
         """发布已发现漏洞（客观事实）。"""
         with self._lock:
             finding.solver_id = solver_id
+            self.semantic_memory.post_finding(finding, solver_id)
             self._memory.findings.append(finding)
         self._notify("finding", solver_id)
 
@@ -52,11 +59,29 @@ class Blackboard:
 
     def set_fact(self, key: str, value: object) -> None:
         with self._lock:
+            self.semantic_memory.set_fact(key, value)
             self._memory.facts[key] = value
 
     def get_fact(self, key: str, default: object = None) -> object:
         with self._lock:
             return self._memory.facts.get(key, default)
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        min_score: float = 0.0,
+        kinds: tuple[MemoryKind, ...] | None = None,
+    ) -> list[MemorySearchResult]:
+        """Search retrievable findings and shared context."""
+
+        return self.semantic_memory.search(
+            query,
+            top_k=top_k,
+            min_score=min_score,
+            kinds=kinds,
+        )
 
     # ---- Idea（方向，状态可变） ----
 
@@ -71,8 +96,7 @@ class Blackboard:
         """读取开放方向（按优先级降序）。"""
         with self._lock:
             open_ideas = [
-                i for i in self._ideas.values()
-                if i.status == "open" and i.priority >= min_priority
+                i for i in self._ideas.values() if i.status == "open" and i.priority >= min_priority
             ]
         return sorted(open_ideas, key=lambda x: x.priority, reverse=True)
 

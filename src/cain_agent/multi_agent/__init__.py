@@ -13,6 +13,14 @@ from cain_agent.multi_agent.handler import (
     create_multi_agent_handlers,
 )
 from cain_agent.multi_agent.manager import PentestManager
+from cain_agent.multi_agent.memory import (
+    EmbeddingProvider,
+    LocalHashEmbedding,
+    MemoryKind,
+    MemoryRecord,
+    MemorySearchResult,
+    SemanticMemory,
+)
 from cain_agent.multi_agent.observer import SafetyObserver
 from cain_agent.multi_agent.solver import (
     BaseSolver,
@@ -41,12 +49,18 @@ __all__ = [
     "ExploitSolver",
     "Finding",
     "Idea",
+    "EmbeddingProvider",
+    "LocalHashEmbedding",
     "Memory",
+    "MemoryKind",
+    "MemoryRecord",
+    "MemorySearchResult",
     "MultiAgentHandler",
     "PentestManager",
     "ReconSolver",
     "ReportSolver",
     "SafetyObserver",
+    "SemanticMemory",
     "SolverResult",
     "SolverTask",
     "ValidationConsensus",
