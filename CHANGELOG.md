@@ -1,5 +1,16 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-15 · 中心编排器起步：并行验证池 + 失败自愈 + scope 端口闭环
+
+- **scope 端口匹配闭环**(`tests/test_scope.py`):新增回归测试钉死「裸 host 白名单
+  必须匹配带端口/scheme 的请求目标」(`103.236.66.228` 匹配 `103.236.66.228:3333`);
+  确认 `scope.py` 既有 `_strip_port` 逻辑生效,修复 08-12 smoke test 阶段 0 findings 的误拦
+- **并行验证池**(`multi_agent/verify_pool.py`):同一 finding 并行起 N 个独立校验会话,
+  多数表决 + 分歧标记(`confirmed|contested|rejected`),交叉确认防单点误判
+- **失败自愈 auto-prompt**(`multi_agent/auto_prompt.py`):中心监控 solver 失败模式
+  (连续空结果/超时/解析失败),自动重写提示词重派(retry/decompose/skip)
+- 测试 854 passed, 3 skipped
+
 ## 2026-08-12 · CLI 真实 smoke 端到端打通 + 授权门移除 + README 重写
 
 - **真实 smoke 打通**(`src/cain_agent/cli.py`):对自建靶场跑通 recon→test→report
