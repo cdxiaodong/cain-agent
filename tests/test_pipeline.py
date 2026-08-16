@@ -25,6 +25,11 @@ from cain_agent.findings import (
     Severity,
     hash_evidence,
 )
+from cain_agent.multi_agent.verify_pool import (
+    VerificationPool,
+    VerificationSession,
+    VerificationVerdict,
+)
 from cain_agent.orchestrator import Orchestrator
 from cain_agent.pipeline import (
     REPORT_PLACEHOLDER_FILE,
@@ -99,6 +104,34 @@ def _pipeline(ws: Workspace, validation: SDKExecutor) -> FindingsPipeline:
     return FindingsPipeline(ws, discovery_executor=SDKExecutor(), validation_executor=validation)
 
 
+class _StaticVoteSession(VerificationSession):
+    """固定表决的验证池 session;``executor`` 仅用于防自证对照,不参与真实校验。"""
+
+    def __init__(
+        self,
+        solver_id: str,
+        verdict: VerificationVerdict,
+        *,
+        executor: SDKExecutor | None = None,
+    ) -> None:
+        super().__init__(solver_id)
+        self.verdict = verdict
+        self.executor = executor
+        self.seen_finding_ids: list[str] = []
+
+    def verify(self, finding) -> VerificationVerdict:  # type: ignore[no-untyped-def]
+        self.seen_finding_ids.append(finding.finding_id)
+        return self.verdict
+
+
+def _pool(*verdicts: VerificationVerdict, executor: SDKExecutor | None = None) -> VerificationPool:
+    sessions = [
+        _StaticVoteSession(f"verify-{index}", verdict, executor=executor)
+        for index, verdict in enumerate(verdicts)
+    ]
+    return VerificationPool(None, sessions)
+
+
 # -- 防自证:同 session 硬拒绝 ---------------------------------------------------
 
 
@@ -106,6 +139,20 @@ def test_same_executor_object_rejected(ws: Workspace) -> None:
     shared = SDKExecutor()
     with pytest.raises(ValidatorError, match="禁止自证"):
         FindingsPipeline(ws, discovery_executor=shared, validation_executor=shared)
+
+
+def test_pool_session_reusing_discovery_executor_rejected(ws: Workspace) -> None:
+    shared = SDKExecutor()
+    pool = _pool(
+        VerificationVerdict.CONFIRMED, VerificationVerdict.CONFIRMED, executor=shared
+    )
+    with pytest.raises(ValidatorError, match="禁止自证"):
+        FindingsPipeline(
+            ws,
+            discovery_executor=shared,
+            validation_executor=SDKExecutor(),
+            verification_pool=pool,
+        )
 
 
 # -- 全链路:新 finding → confirmed,双落盘 ----------------------------------------
@@ -294,3 +341,107 @@ def test_report_handler_skips_terminal_findings(ws: Workspace) -> None:
     summary = ws.read_json(VALIDATION_SUMMARY_FILE)
     assert summary["skipped_terminal"] == 1
     assert summary["validated"] == 0
+
+
+# -- 并行验证池:多数表决接线 -----------------------------------------------------
+
+
+def _pool_pipeline(ws: Workspace, validation: SDKExecutor, pool) -> FindingsPipeline:  # type: ignore[no-untyped-def]
+    return FindingsPipeline(
+        ws,
+        discovery_executor=SDKExecutor(),
+        validation_executor=validation,
+        verification_pool=pool,
+    )
+
+
+def test_pool_confirmed_majority_marks_confirmed(ws: Workspace) -> None:
+    _seed(ws, [_finding(finding_id="f-pool")])  # public-read → 规则表 high
+    validation = ScriptedExecutor([_confirmed()])
+    pool = _pool(
+        VerificationVerdict.CONFIRMED,
+        VerificationVerdict.CONFIRMED,
+        VerificationVerdict.REJECTED,
+    )
+    summary = asyncio.run(_pool_pipeline(ws, validation, pool).run())
+
+    stored = _load(ws)[0]
+    assert stored.result is FindingResult.CONFIRMED, "多数确认 → confirmed"
+    assert stored.severity is Severity.HIGH, "池只表决真伪,severity 仍过规则表"
+    assert stored.reason == "并行验证池多数确认"
+    assert validation.prompts == [], "走池后不再调单会话校验"
+    assert summary.results["confirmed"] == 1
+    assert summary.failures == []
+
+
+def test_pool_rejected_majority_marks_false_positive(ws: Workspace) -> None:
+    _seed(ws, [_finding(finding_id="f-pool")])
+    pool = _pool(
+        VerificationVerdict.REJECTED,
+        VerificationVerdict.REJECTED,
+        VerificationVerdict.INCONCLUSIVE,
+    )
+    summary = asyncio.run(_pool_pipeline(ws, ScriptedExecutor([_confirmed()]), pool).run())
+
+    stored = _load(ws)[0]
+    assert stored.result is FindingResult.FALSE_POSITIVE, "多数判误报 → false_positive"
+    assert stored.reason == "并行验证池多数判误报"
+    assert summary.results["false_positive"] == 1
+
+
+def test_pool_contested_marks_inconclusive(ws: Workspace) -> None:
+    _seed(ws, [_finding(finding_id="f-pool")])
+    pool = _pool(VerificationVerdict.CONFIRMED, VerificationVerdict.REJECTED)
+    summary = asyncio.run(_pool_pipeline(ws, ScriptedExecutor([_confirmed()]), pool).run())
+
+    stored = _load(ws)[0]
+    assert stored.result is FindingResult.VALIDATION_INCONCLUSIVE, "无多数/分歧 → inconclusive"
+    assert stored.reason == "并行验证池未达多数"
+    assert summary.results["validation_inconclusive"] == 1
+
+
+def test_pool_each_session_verifies_candidate(ws: Workspace) -> None:
+    _seed(ws, [_finding(finding_id="f-pool")])
+    sessions = [
+        _StaticVoteSession(f"verify-{i}", VerificationVerdict.CONFIRMED) for i in range(3)
+    ]
+    pool = VerificationPool(None, sessions)
+    asyncio.run(_pool_pipeline(ws, ScriptedExecutor([_confirmed()]), pool).run())
+
+    assert [s.seen_finding_ids for s in sessions] == [["f-pool"]] * 3, (
+        "池内每个 session 都独立校验同一条 finding"
+    )
+
+
+class _ExplodingPool:
+    """verify_finding 必抛异常的坏池,用于验证降级路径。"""
+
+    sessions: tuple = ()
+
+    def verify_finding(self, candidate):  # type: ignore[no-untyped-def]
+        raise RuntimeError("pool exploded")
+
+
+def test_pool_error_falls_back_to_single_session(ws: Workspace) -> None:
+    _seed(ws, [_finding(finding_id="f-pool")])
+    validation = ScriptedExecutor([_confirmed("降级单会话确认")])
+    summary = asyncio.run(_pool_pipeline(ws, validation, _ExplodingPool()).run())
+
+    stored = _load(ws)[0]
+    assert stored.result is FindingResult.CONFIRMED, "池异常 → 降级单会话校验"
+    assert stored.reason == "降级单会话确认"
+    assert len(validation.prompts) == 1, "降级路径调用了单会话校验"
+    assert summary.failures == [], "降级是预期路径,不计入失败清单"
+
+
+def test_pool_terminal_findings_still_skipped(ws: Workspace) -> None:
+    _seed(ws, [_finding(result=FindingResult.CONFIRMED, severity=Severity.HIGH)])
+    sessions = [
+        _StaticVoteSession(f"verify-{i}", VerificationVerdict.REJECTED) for i in range(2)
+    ]
+    pool = VerificationPool(None, sessions)
+    summary = asyncio.run(_pool_pipeline(ws, ScriptedExecutor([_confirmed()]), pool).run())
+
+    assert all(s.seen_finding_ids == [] for s in sessions), "终态 finding 不送池"
+    assert summary.skipped_terminal == 1
+    assert summary.validated == 0
