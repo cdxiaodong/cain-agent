@@ -27,6 +27,14 @@ from cain_agent.multi_agent.types import (
     SolverResult,
     SolverTask,
 )
+from cain_agent.multi_agent.verify_pool import (
+    ValidationConsensus,
+    VerificationPool,
+    VerificationReport,
+    VerificationSession,
+    VerificationVerdict,
+    VerificationVote,
+)
 
 __all__ = [
     "BaseSolver",
@@ -41,5 +49,11 @@ __all__ = [
     "SafetyObserver",
     "SolverResult",
     "SolverTask",
+    "ValidationConsensus",
+    "VerificationPool",
+    "VerificationReport",
+    "VerificationSession",
+    "VerificationVerdict",
+    "VerificationVote",
     "create_multi_agent_handlers",
 ]
