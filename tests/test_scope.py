@@ -291,3 +291,49 @@ def test_from_dict_defaults_empty() -> None:
 def test_invalid_config_raises(data: object) -> None:
     with pytest.raises(ScopeConfigError):
         Scope.from_dict(data)  # type: ignore[arg-type]
+
+
+# --- regression: bare-host in_scope must match host:port request targets ------
+# Bug context: a smoke run stored the bare IP ``103.236.66.228`` in in_scope but
+# the agent requested ``103.236.66.228:3333``; the default-deny posture then
+# blocked every probe and the test phase reported zero findings. These cases pin
+# the host-extraction normalization so a port/scheme suffix can never split an
+# otherwise in-scope target away from its whitelist entry.
+def test_ip_scope_entry_matches_port_request() -> None:
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    assert scope.is_allowed("103.236.66.228:3333")
+    assert scope.is_allowed("http://103.236.66.228:3333/")
+    assert scope.is_allowed("http://103.236.66.228:3333/upload")
+
+
+def test_domain_scope_entry_matches_port_request() -> None:
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    assert scope.is_allowed("example.com:8080")
+    assert scope.is_allowed("https://example.com:8443/a?b=1")
+    assert scope.is_allowed("sub.example.com:9000")
+
+
+def test_ipv6_scope_entry_matches_bracketed_port_request() -> None:
+    scope = Scope(in_scope=["::1"], out_of_scope=[])
+    assert scope.is_allowed("[::1]:8080")
+    assert scope.is_allowed("http://[::1]:9000/x")
+
+
+def test_port_request_still_denied_when_host_out_of_scope() -> None:
+    # Port stripping must not widen scope: a different host stays denied.
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    assert not scope.is_allowed("103.236.66.229:3333")
+    assert not scope.is_allowed("http://evil.com:3333/")
+
+
+def test_hook_allows_curl_against_port_target() -> None:
+    # End-to-end through the PreToolUse hook: the exact shape of the smoke probe
+    # that was previously denied.
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    for cmd in (
+        "curl -s http://103.236.66.228:3333/",
+        'curl -s http://103.236.66.228:3333/upload -F "file=@x.png"',
+        "curl http://103.236.66.228:3333/api",
+    ):
+        decision = _hook_decision(scope, "Bash", {"command": cmd})
+        assert not _is_deny(decision), cmd
