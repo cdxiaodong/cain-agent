@@ -166,6 +166,28 @@ def test_extract_host_header_override() -> None:
     assert "internal.example.com" in targets
 
 
+def test_extract_curl_http_method_is_not_target() -> None:
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    command = (
+        'curl -s -i --max-time 10 -X POST '
+        '"http://103.236.66.228:3333/api/wishes" '
+        "-H 'Content-Type: application/json' -d '{\"name\":\"probe\"}'"
+    )
+    targets = scope.extract_targets("Bash", {"command": command})
+    assert targets == ["http://103.236.66.228:3333/api/wishes"]
+    assert scope.is_allowed(targets[0])
+
+
+def test_extract_curl_request_target_is_not_target() -> None:
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    command = (
+        "curl --request-target /api/wishes -X POST "
+        '"http://103.236.66.228:3333/api/wishes"'
+    )
+    targets = scope.extract_targets("Bash", {"command": command})
+    assert targets == ["http://103.236.66.228:3333/api/wishes"]
+
+
 def test_extract_multiple_subcommands() -> None:
     scope = Scope(in_scope=[], out_of_scope=[])
     targets = scope.extract_targets(
