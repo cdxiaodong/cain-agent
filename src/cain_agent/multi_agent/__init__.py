@@ -12,7 +12,11 @@ from cain_agent.multi_agent.handler import (
     MultiAgentHandler,
     create_multi_agent_handlers,
 )
-from cain_agent.multi_agent.manager import PentestManager
+from cain_agent.multi_agent.manager import (
+    EvidenceLink,
+    ManagerConclusion,
+    PentestManager,
+)
 from cain_agent.multi_agent.memory import (
     EmbeddingProvider,
     LocalHashEmbedding,
@@ -46,11 +50,13 @@ from cain_agent.multi_agent.verify_pool import (
 
 __all__ = [
     "BaseSolver",
+    "EvidenceLink",
     "ExploitSolver",
     "Finding",
     "Idea",
     "EmbeddingProvider",
     "LocalHashEmbedding",
+    "ManagerConclusion",
     "Memory",
     "MemoryKind",
     "MemoryRecord",
