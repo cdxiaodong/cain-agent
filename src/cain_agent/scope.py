@@ -51,6 +51,7 @@ _VALUE_FLAGS: dict[str, set[str]] = {
         "-o", "--output", "-H", "--header", "-A", "--user-agent", "-e", "--referer",
         "-u", "--user", "-x", "--proxy", "-U", "--proxy-user", "--proxy-header",
         "-K", "--config", "--url", "-E", "--cert", "--key", "--pass",
+        "-X", "--request", "--request-target",
         "-d", "--data", "--data-raw", "--data-binary", "--data-urlencode",
         "--form-string", "-F", "--form", "-b", "--cookie", "-c", "--cookie-jar",
         "-C", "--continue-at", "-T", "--upload-file", "-D", "--dump-header",
