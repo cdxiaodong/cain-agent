@@ -1,5 +1,15 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-16 · 中心编排器推进：验证池接线 + 语义记忆 + smoke 复测闭环
+
+- **并行验证池接入 FindingsPipeline**(`pipeline.py`):finding 校验改走多数表决
+  (交叉确认防单点误判),保持「发现≠校验」双会话约束;池不可用时回退单会话
+- **语义记忆底座**(`multi_agent/memory.py`):finding/上下文向量化存储 + 相似度检索,
+  solver 间共享可检索上下文,避免重复扫描;与 Blackboard 对齐,不引入重依赖
+- **scope 修复后 smoke 复测**:对自建靶场重跑非 dry-run 全链路,test 阶段不再被
+   scope 误拦;顺手修复 scope 的 curl 方法参数解析;产出 `docs/release/smoke-2026-08-16.md`
+- 测试 872 passed, 3 skipped
+
 ## 2026-08-15 · 中心编排器起步：并行验证池 + 失败自愈 + scope 端口闭环
 
 - **scope 端口匹配闭环**(`tests/test_scope.py`):新增回归测试钉死「裸 host 白名单
