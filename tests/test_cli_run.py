@@ -407,13 +407,14 @@ class TestClassicHandlers:
         assert findings[0]["result"] == "confirmed"
         assert (ws / "test" / "test-output.txt").exists()
 
-        # report: 校验汇总 + 占位报告(真实报告生成后续接入)
+        # report: 校验汇总 + 中心编排真实聚合报告
         summary = json.loads(
             (ws / "report" / "validation-summary.json").read_text(encoding="utf-8")
         )
         assert summary["total"] == 1
         assert summary["results"]["confirmed"] == 1
-        assert (ws / "report" / "report-placeholder.json").exists()
+        assert (ws / "report" / "aggregated-report.json").exists()
+        assert (ws / "report" / "report.md").exists()
 
         # 状态机历史按 recon → test → report 钉死
         state = json.loads((ws / "state.json").read_text(encoding="utf-8"))

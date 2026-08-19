@@ -7,8 +7,9 @@ Commands:
 Security: target scope is written to ``scope.yaml`` and enforced on every tool
 call; credentials are never printed.
 
-经典 Route A:``run`` 注入三阶段真实 handler——recon/test 共享发现 executor,
-report 走独立校验 session 的 FindingsPipeline(发现≠校验,§3.3 防自证);
+默认中心编排:recon/test 仍复用 Route A 发现通道,report 把 Manager /
+Solver / 并行验证池 / 语义记忆组装成聚合报告。中心编排不可用时自动回退
+经典 Route A:report 走独立校验 session 的 FindingsPipeline 与占位报告。
 技能经仓库 SkillLoader 按阶段加载,缺失自动降级为无技能 prompt。
 """
 
@@ -181,6 +182,13 @@ def _build_validation_executor(args: argparse.Namespace) -> Any:
     )
 
 
+def _build_orchestration(validation_executor: Any, workspace: Workspace) -> Any:
+    """Build the central multi-agent route; failures trigger Route A fallback."""
+    from cain_agent.multi_agent.orchestration import build_orchestration
+
+    return build_orchestration(validation_executor)
+
+
 def _build_handlers(
     executor: Any,
     validation_executor: Any,
@@ -188,24 +196,35 @@ def _build_handlers(
 ) -> dict[str, StageHandler]:
     """构造经典 Route A 的三阶段真实 handler,供 Orchestrator 注入。
 
-    - recon / test 共享「发现 executor」;report 经 ``make_report_handler``
-      驱动 FindingsPipeline,校验走独立 session——发现与校验永不共享 session。
+    - recon / test 共享「发现 executor」;report 优先驱动中心编排链路。
+    - 中心编排构造失败时回退经典 Route A,校验仍走独立 session。
     - 技能加载用仓库 SkillLoader + 默认 ``skills/`` 根(既有约定),阶段零技能
       命中自动降级为无技能 prompt,不炸。
     - 独立函数便于测试逐件 monkeypatch / spy,零真实 Agent 启动。
     """
     from cain_agent.handlers import SkillLoader, make_recon_handler, make_test_handler
+    from cain_agent.multi_agent.orchestration import make_multi_agent_report_handler
     from cain_agent.pipeline import FindingsPipeline, make_report_handler
 
     skill_loader = SkillLoader()  # 仓库 skills/ 根,既有约定
     recon_handler = make_recon_handler(executor, skill_loader)
     test_handler = make_test_handler(executor, skill_loader)
-    pipeline = FindingsPipeline(
-        workspace,
-        discovery_executor=executor,
-        validation_executor=validation_executor,
-    )
-    report_handler = make_report_handler(pipeline)
+    try:
+        orchestration = _build_orchestration(validation_executor, workspace)
+        pipeline = FindingsPipeline(
+            workspace,
+            discovery_executor=executor,
+            validation_executor=validation_executor,
+            verification_pool=orchestration.verification_pool,
+        )
+        report_handler = make_multi_agent_report_handler(pipeline, orchestration)
+    except Exception:
+        pipeline = FindingsPipeline(
+            workspace,
+            discovery_executor=executor,
+            validation_executor=validation_executor,
+        )
+        report_handler = make_report_handler(pipeline)
     return {
         "recon": recon_handler,
         "test": test_handler,
