@@ -1,5 +1,17 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-19 · 中心编排器成形：Manager 判断聚合 + 全流程接线 + 编排文章
+
+- **中心 Manager 判断聚合**(`multi_agent/manager.py` + `tests/test_manager.py`):
+  finding 表决结果 + 记忆相似旁证 → 输出带 confidence 与依据链的结论列表,
+  编排层有了「拍板」环节而非简单收集
+- **全流程编排接线**(`multi_agent/orchestration.py` + `cli.py`):Manager/Solver/
+  验证池/语义记忆组装为完整编排链路接入 `cain-agent run`,report 阶段输出真实
+  聚合报告替换占位文件;经典 Route A 保持可回退
+- **第四篇架构文章**(`docs/articles/04-orchestration.md`):从单 Agent 到多
+  Agent 编排的架构演进,讲清设计动机与取舍
+- 测试 926 passed, 3 skipped
+
 ## 2026-08-16 · 中心编排器推进：验证池接线 + 语义记忆 + smoke 复测闭环
 
 - **并行验证池接入 FindingsPipeline**(`pipeline.py`):finding 校验改走多数表决
