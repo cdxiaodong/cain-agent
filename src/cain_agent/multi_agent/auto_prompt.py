@@ -81,6 +81,24 @@ class RepromptDecision:
         return self.action is not RepromptAction.SKIP
 
 
+@dataclass(frozen=True)
+class RecoveryPolicy:
+    """Configurable recovery action sequence for solver execution failures.
+
+    After classifying a failure mode, the engine walks through ``sequence``
+    starting at index ``attempts - failure_threshold``. Once ``max_attempts``
+    is reached the final action is always ``SKIP`` regardless of sequence.
+    """
+
+    sequence: tuple[RepromptAction, ...] = (
+        RepromptAction.RETRY,
+        RepromptAction.DECOMPOSE,
+        RepromptAction.SKIP,
+    )
+    failure_threshold: int = 1
+    max_attempts: int = 3
+
+
 def is_recoverable_failure(result: SolverResult) -> bool:
     """Return whether a result should participate in failure recovery."""
 
@@ -117,7 +135,13 @@ class AutoPromptEngine:
         base_prompt: str = "完成当前只读检测任务，并给出可验证结果。",
         failure_threshold: int = 2,
         max_attempts: int = 3,
+        policy: RecoveryPolicy | None = None,
     ) -> None:
+        self.policy = policy
+        if policy is not None:
+            failure_threshold = policy.failure_threshold
+            max_attempts = policy.max_attempts
+
         if failure_threshold < 1:
             raise ValueError("failure_threshold must be at least 1")
         if max_attempts < failure_threshold:
@@ -184,6 +208,8 @@ class AutoPromptEngine:
             action = RepromptAction.SKIP
             prompt = target
             reason = f"连续 {streak} 次 {latest.mode.value} 失败，已达到重试上限"
+        elif self.policy is not None:
+            action, prompt, reason = self._policy_action(latest.mode, target, streak)
         elif latest.mode is FailureMode.PARSE:
             action = RepromptAction.RETRY
             prompt = (
@@ -219,6 +245,55 @@ class AutoPromptEngine:
             solver_id=latest.solver_id,
             task_id=latest.task_id,
         )
+
+    def _policy_action(
+        self,
+        mode: FailureMode,
+        target: str,
+        streak: int,
+    ) -> tuple[RepromptAction, str, str]:
+        """Select the next action from the configured recovery sequence."""
+
+        assert self.policy is not None
+        index = min(streak - self.failure_threshold, len(self.policy.sequence) - 1)
+        action = self.policy.sequence[index]
+
+        if action is RepromptAction.SKIP:
+            return action, target, f"连续 {streak} 次 {mode.value} 失败，已达到重试上限"
+
+        if action is RepromptAction.RETRY:
+            if mode is FailureMode.PARSE:
+                prompt = (
+                    f"重试目标：{target}\\n"
+                    "只输出一个 JSON 对象，不要 Markdown、解释或额外文本。"
+                    'Schema: {"success": boolean, "findings": array, "ideas": array, "error": string}。'
+                    " findings/ideas 内每项必须包含类型、证据和可复核位置。"
+                )
+                reason = "输出契约不足导致解析失败，使用严格 JSON 格式重试"
+            else:
+                prompt = (
+                    f"重试目标：{target}\\n"
+                    f"前一次执行触发 {mode.value} 失败，请重新执行并给出明确可验证结果。"
+                )
+                reason = f"{mode.value} 失败，按策略直接重试"
+            return action, prompt, reason
+
+        # DECOMPOSE
+        if mode is FailureMode.TIMEOUT:
+            prompt = (
+                f"将目标拆分为两个更小的只读检测步骤：{target}\\n"
+                "每步只验证一个输入或一个端点，给出硬性时间预算。"
+                "先输出可执行步骤，再输出每步的最小可观察结果。"
+            )
+            reason = "执行范围或时间预算过大，先分解再重派"
+        else:
+            prompt = (
+                f"当前目标连续 {streak} 次没有产生 findings 或 ideas：{target}\\n"
+                "请先拆出最多 3 个更小的可观察对象，再为每个对象设计一条只读验证路径。"
+                "每条路径必须定义成功判据、失败判据和可保存的输出字段。"
+            )
+            reason = "原提示词过宽且没有可观察边界，需要分解任务"
+        return action, prompt, reason
 
 
 class BlackboardAutoPromptMonitor:
