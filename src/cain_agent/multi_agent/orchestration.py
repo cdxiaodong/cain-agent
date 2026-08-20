@@ -25,6 +25,12 @@ from cain_agent.findings import (
     FindingResult,
     dedup,
 )
+from cain_agent.multi_agent.auto_prompt import (
+    AutoPromptEngine,
+    BlackboardAutoPromptMonitor,
+    RecoveryPolicy,
+    RepromptAction,
+)
 from cain_agent.multi_agent.blackboard import Blackboard
 from cain_agent.multi_agent.manager import PentestManager
 from cain_agent.multi_agent.solver import BaseSolver, ReportSolver
@@ -45,6 +51,7 @@ __all__ = [
     "AGGREGATED_REPORT_FILE",
     "MARKDOWN_REPORT_FILE",
     "MultiAgentOrchestration",
+    "RecoveryPolicy",
     "build_orchestration",
     "make_multi_agent_report_handler",
 ]
@@ -150,13 +157,27 @@ def build_orchestration(
     validation_executor: SDKExecutor,
     *,
     session_count: int = 3,
+    recovery_policy: RecoveryPolicy | None = None,
 ) -> MultiAgentOrchestration:
     """Build the default central route without replacing Route A discovery."""
 
     if session_count < 2:
         raise ValueError("central orchestration needs at least two verification sessions")
     blackboard = Blackboard()
-    manager = PentestManager(blackboard)
+    recovery_policy = recovery_policy or RecoveryPolicy(
+        sequence=(
+            RepromptAction.RETRY,
+            RepromptAction.DECOMPOSE,
+            RepromptAction.SKIP,
+        ),
+        failure_threshold=1,
+        max_attempts=3,
+    )
+    monitor = BlackboardAutoPromptMonitor(
+        blackboard,
+        AutoPromptEngine(policy=recovery_policy),
+    )
+    manager = PentestManager(blackboard, recovery=monitor)
     sessions = tuple(
         ExecutorVerificationSession(f"verify-{index}", validation_executor)
         for index in range(session_count)

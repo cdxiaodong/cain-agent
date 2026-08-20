@@ -15,6 +15,11 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from cain_agent.multi_agent.auto_prompt import (
+    BlackboardAutoPromptMonitor,
+    RepromptAction,
+    is_recoverable_failure,
+)
 from cain_agent.multi_agent.memory import (
     MemoryKind,
     MemorySearchResult,
@@ -115,9 +120,15 @@ class PentestManager:
     多数表决与语义记忆检索，输出带置信度的最终结论。
     """
 
-    def __init__(self, blackboard: Blackboard, observer: SafetyObserver | None = None):
+    def __init__(
+        self,
+        blackboard: Blackboard,
+        observer: SafetyObserver | None = None,
+        recovery: BlackboardAutoPromptMonitor | None = None,
+    ):
         self.blackboard = blackboard
         self.observer = observer
+        self.recovery = recovery
         self.slots: dict[str, SolverSlot] = {}
         self.completed_tasks: list[SolverResult] = []
 
@@ -126,36 +137,59 @@ class PentestManager:
         self.slots[solver_id] = SolverSlot(solver=solver)
 
     def dispatch(self, tasks: list[SolverTask]) -> list[SolverResult]:
-        """批量分发任务（根据能力路由）。"""
+        """批量分发任务（根据能力路由），失败时按恢复策略自动重派。"""
         results = []
 
         for task in tasks:
-            solver_id = self._route_solver(task)
-            if not solver_id:
-                results.append(SolverResult(
-                    task_id=task.task_id,
-                    success=False,
-                    error=f"无可用 Solver（能力: {task.context.get('capability', 'unknown')}）",
-                ))
-                continue
-
-            slot = self.slots[solver_id]
-            slot.task = task
-            slot.busy_since = time.time()
-
-            # Observer 预检（可选，不影响分发）
-            if self.observer:
-                # 占位：Observer 可在这里给出前置建议
-                pass
-
-            result = slot.solver.execute(task)
-            slot.completed_tasks += 1
-            slot.task = None
-
+            result = self._execute_with_recovery(task)
             results.append(result)
             self.completed_tasks.append(result)
 
         return results
+
+    def _execute_with_recovery(self, task: SolverTask) -> SolverResult:
+        """执行单个任务并在失败时按 auto_prompt 策略重派。"""
+        current_task = task
+        while True:
+            result = self._execute_once(current_task)
+            if self.recovery is None or not is_recoverable_failure(result):
+                return result
+
+            decision = self.recovery.record(result, current_task.objective)
+            if decision is None or decision.action is RepromptAction.SKIP:
+                return result
+
+            current_task = SolverTask(
+                objective=decision.prompt,
+                scope=current_task.scope,
+                constraints=current_task.constraints,
+                context=current_task.context,
+            )
+
+    def _execute_once(self, task: SolverTask) -> SolverResult:
+        """执行单个任务一次（无恢复）。"""
+        solver_id = self._route_solver(task)
+        if not solver_id:
+            return SolverResult(
+                task_id=task.task_id,
+                success=False,
+                error=f"无可用 Solver（能力: {task.context.get('capability', 'unknown')}）",
+            )
+
+        slot = self.slots[solver_id]
+        slot.task = task
+        slot.busy_since = time.time()
+
+        # Observer 预检（可选，不影响分发）
+        if self.observer:
+            # 占位：Observer 可在这里给出前置建议
+            pass
+
+        result = slot.solver.execute(task)
+        slot.completed_tasks += 1
+        slot.task = None
+
+        return result
 
     def _route_solver(self, task: SolverTask) -> str | None:
         """根据任务能力路由到空闲 Solver（负载均衡）。"""
