@@ -1,0 +1,20 @@
+{
+  "suite": "offline-orchestration-regression",
+  "scenarios": [
+    {
+      "id": "confirmed-majority",
+      "classic": {"findings": 2, "confirmed_findings": 2, "duration_sec": 0.0041, "token_cost": 180},
+      "orchestrated": {"findings": 2, "confirmed_findings": 2, "duration_sec": 0.0068, "token_cost": 420}
+    },
+    {
+      "id": "rejected-majority",
+      "classic": {"findings": 2, "confirmed_findings": 1, "duration_sec": 0.0038, "token_cost": 176},
+      "orchestrated": {"findings": 2, "confirmed_findings": 1, "duration_sec": 0.0065, "token_cost": 414}
+    },
+    {
+      "id": "inconclusive-split",
+      "classic": {"findings": 2, "confirmed_findings": 1, "duration_sec": 0.0039, "token_cost": 182},
+      "orchestrated": {"findings": 2, "confirmed_findings": 1, "duration_sec": 0.0067, "token_cost": 426}
+    }
+  ]
+}

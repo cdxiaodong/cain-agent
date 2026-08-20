@@ -73,7 +73,18 @@ python bench/run_benchmark.py --suite xbow --output results/xbow-2026-08.md
 
 # 自建靶场评测（待实现）
 python bench/run_benchmark.py --suite vuln-tf --output results/vuln-tf-2026-08.md
+
+# 同一组场景的经典/编排对比
+python bench/run_benchmark.py \
+  --compare-input bench/comparison-2026-08-19.json \
+  --output results/comparison.md
 ```
+
+对比输入的 `scenarios` 数组中，每项包含唯一 `id`，以及 `classic`、
+`orchestrated` 两组结果。结果字段为 `findings`、`confirmed_findings`、
+`duration_sec`，并可通过 `token_cost` 或 SDK `usage` 提供 token 消耗。
+框架固定场景集合与顺序，汇总 finding 确认率、总耗时和 token 消耗，
+同时保留逐场景明细与错误状态。
 
 ## 注意事项
 
