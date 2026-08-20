@@ -1,5 +1,18 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-20 · 编排链路实战验证:全链路 smoke + 失败自愈接线 + 编排 benchmark
+
+- **编排模式全链路 smoke**(`docs/release/smoke-2026-08-19.md`):对自建靶场非
+  dry-run 跑通 recon→test→report,report 走真实聚合路由(无占位回退),scope
+  白名单零越权出网;本轮 0 findings 系靶场 nginx 405 拦截写入端点所致,如实记录
+- **auto_prompt 失败自愈接入编排层**(`multi_agent/orchestration.py`):solver
+  失败自动重派 retry/decompose/skip,策略可配置,经典 Route A 保持可回退
+- **benchmark 支持编排模式对比**(`bench/run_benchmark.py`):同一组场景经典 vs
+  编排,输出确认率/耗时/token 对比,见 `docs/release/bench-orchestrated-2026-08-19.md`
+- smoke 发现的待办(记录待修):ScopeGuardHook 对 grep 正则/本地路径/重定向的
+  命令语义误拦;云端测试套件缺 boto3 等未声明依赖导致收集错误
+- 测试 940 passed, 3 skipped
+
 ## 2026-08-19 · 中心编排器成形：Manager 判断聚合 + 全流程接线 + 编排文章
 
 - **中心 Manager 判断聚合**(`multi_agent/manager.py` + `tests/test_manager.py`):
