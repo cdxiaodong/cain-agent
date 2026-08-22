@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "scenario_id": "local-ssti-offline",
+  "mode": "offline-mock",
+  "request": {
+    "method": "GET",
+    "url": "http://127.0.0.1:9753/render?template=%7B%7B7%2A7%7D%7D",
+    "template": "{{7*7}}"
+  },
+  "response": {
+    "status": 200,
+    "body": "render result: <ssti-proof>49</ssti-proof>"
+  },
+  "expected": {
+    "issue_type": "ssti",
+    "proof_marker": "<ssti-proof>49</ssti-proof>",
+    "finding_reason": "SSTI payload evaluated"
+  }
+}
