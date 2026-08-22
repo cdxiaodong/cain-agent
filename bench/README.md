@@ -78,6 +78,11 @@ python bench/run_benchmark.py --suite vuln-tf --output results/vuln-tf-2026-08.m
 python bench/run_benchmark.py \
   --compare-input bench/comparison-2026-08-19.json \
   --output results/comparison.md
+
+# 本地离线 SSTI 场景：真实进入 finding、验证池与聚合报告
+python bench/run_benchmark.py \
+  --suite local-finding-fixture \
+  --output results/local-finding-fixture.json
 ```
 
 对比输入的 `scenarios` 数组中，每项包含唯一 `id`，以及 `classic`、

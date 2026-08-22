@@ -250,7 +250,7 @@ def run_vuln_tf_benchmark(output_path: Path) -> BenchmarkResult:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="cain-agent Benchmark 评测")
-    parser.add_argument("--suite", choices=["xbow", "vuln-tf"])
+    parser.add_argument("--suite", choices=["xbow", "vuln-tf", "local-finding-fixture"])
     parser.add_argument("--compare-input", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -261,6 +261,10 @@ def main() -> None:
         run_xbow_benchmark(args.output)
     elif args.suite == "vuln-tf":
         run_vuln_tf_benchmark(args.output)
+    elif args.suite == "local-finding-fixture":
+        from local_finding_fixture import run_local_finding_fixture
+
+        run_local_finding_fixture(args.output)
     else:
         parser.error("--suite or --compare-input is required")
 
