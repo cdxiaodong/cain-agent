@@ -1,5 +1,19 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-22 · smoke 后续修复:ScopeGuardHook 误拦闭环 + finding 本地 fixture
+
+- **ScopeGuardHook 命令语义误拦修复**(`scope.py` + `test_scope.py`):只有真实
+  网络目标参与 scope 判定——grep 正则、本地文件路径、`2>` 重定向体不再误判;
+  命令替换 `$()`/反引号视为不可见文本默认拒绝,纯本地命令放行;测试样本直接
+  取自 08-19 smoke 的 48 次误拦实录
+- **finding 闭环本地 fixture**(`bench/local_finding_fixture.py` + SSTI 场景):
+  本地可复现漏洞场景让编排链路稳定产出 ≥1 finding,confidence+依据链完成
+  真实数据演练(补上 08-19 smoke 因靶场 405 零 finding 的缺口),报告见
+  `docs/release/finding-fixture-2026-08-21.md`
+- 云依赖问题(boto3/kubernetes 未声明致裸环境收集失败)已确认,cloud-deps
+  任务进行中
+- 测试 926 passed, 3 skipped(k8s_rbac 因缺 kubernetes SDK 暂排除,归 cloud-deps)
+
 ## 2026-08-20 · 编排链路实战验证:全链路 smoke + 失败自愈接线 + 编排 benchmark
 
 - **编排模式全链路 smoke**(`docs/release/smoke-2026-08-19.md`):对自建靶场非
