@@ -44,6 +44,67 @@ _PERMISSIVE_PROGRAMS = frozenset({
     "gobuster", "ffuf", "whatweb", "nuclei", "httpx", "dnsrecon", "dig",
 })
 
+# Programs that can take a network target as a positional argument but whose
+# positionals are not inherently targets (e.g. ``ssh user@host``). For these the
+# tightened host heuristic decides; for everything outside _NETWORK_PROGRAMS a
+# positional is a pattern, file, or code snippet and never a network target, so
+# only the whole-command URL / Host-header extraction applies to them.
+_NETWORK_PROGRAMS = _PERMISSIVE_PROGRAMS | frozenset({
+    "ssh", "scp", "sftp", "ping", "ping6", "telnet", "ftp", "lftp", "host",
+    "nslookup", "traceroute", "tracepath", "whois", "openssl", "redis-cli",
+    "mysql", "psql", "mongosh", "amass", "subfinder", "rustscan", "naabu",
+})
+
+# Programs with no meaningful network reach from their arguments: file/text
+# utilities and script interpreters. A command made only of these with no
+# literal URL/Host target stays inside the box and is allowed without a target.
+# Deliberately excludes shells (``bash -c "nc host 80"`` hides targets in a
+# nested string), git (``git clone`` takes a remote), and anything unknown.
+_LOCAL_PROGRAMS = frozenset({
+    "ls", "cat", "head", "tail", "echo", "printf", "grep", "egrep", "fgrep",
+    "rg", "sed", "awk", "gawk", "find", "sort", "uniq", "wc", "cut", "tr",
+    "tee", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "ln", "chmod",
+    "chown", "chgrp", "tar", "gzip", "gunzip", "zip", "unzip", "less",
+    "more", "diff", "cmp", "basename", "dirname", "realpath", "readlink",
+    "file", "stat", "du", "df", "ps", "kill", "sleep", "date", "pwd", "cd",
+    "which", "whereis", "jq", "column", "nl", "base64", "iconv", "md5sum",
+    "sha1sum", "sha256sum", "true", "false",
+    "python", "python3", "node", "perl", "ruby",
+})
+
+# Prefix wrappers whose own positional is a duration/assignment rather than the
+# real command; unwrapped so ``sudo nmap 10.0.0.5`` still classifies as nmap.
+_WRAPPER_PROGRAMS = frozenset({
+    "sudo", "env", "nohup", "timeout", "nice", "stdbuf", "time",
+})
+
+# Subcommand classification buckets surfaced to the hook decision.
+_KIND_NETWORK = "network"
+_KIND_LOCAL = "local"
+_KIND_UNKNOWN = "unknown"
+
+# Tokens made of exactly these characters can still name a host once any
+# ``user@`` prefix is stripped. Anything else — regex patterns like
+# ``[a-zA-Z0-9_.-]+``, chunk filenames with underscores, python module paths
+# with other punctuation — is command data, not a target.
+_HOST_CHARS_RE = re.compile(r"[A-Za-z0-9.\-]+")
+
+# Shell redirections and subcommand operators, consumed by a single
+# quote-aware scan so redirected file paths never become host candidates, the
+# "&" of a fd-dup ("2>&1") does not split the command apart, and operators
+# inside quoted code strings ("print(1);") do not fake extra subcommands.
+# Ordering matters: fd-dup must outrank the plain output redirect.
+_SUBCMD_SPLIT_RE = re.compile(
+    r"\d*>\s*&\s*\d+"             # fd-dup: 2>&1, >&2
+    r"|\d*>>?\s*[^\s;&|]+"        # output redirect: >f, >>f, 2> err.log
+    r"|(?<!<)<(?!<)\s*[^\s;&|]+"  # input redirect: <f (heredoc "<<" excluded)
+    r"|&&|\|\||[|;&]"             # subcommand operators
+)
+
+# Heredoc start: <<MARKER, <<-'MARKER', <<"MARKER" — consumes through the
+# terminating marker line so the body neither splits nor loses redirections.
+_HEREDOC_START_RE = re.compile(r"<<-?\s*['\"]?([A-Za-z0-9_\-]+)['\"]?")
+
 # Flags that consume the following token as their value, so that token must not
 # be mistaken for a target host. Focused on the pentest-relevant toolset.
 _VALUE_FLAGS: dict[str, set[str]] = {
@@ -112,6 +173,12 @@ def _looks_like_host(token: str) -> bool:
         return True
     if _IPV4_CIDR_RE.fullmatch(token) or _IPV4_RE.fullmatch(token):
         return True
+    if token.startswith(("/", "./", "../", "~")):
+        return False  # local path or homedir-relative file, never a network destination
+    if "@" in token:  # user@host — judge the host part
+        token = token.rsplit("@", 1)[1]
+    if not _HOST_CHARS_RE.fullmatch(token):
+        return False  # regex patterns / chunk filenames / module paths are data
     # A dot covers domains and host:port; bare single labels (e.g. "localhost")
     # are intentionally treated as ambiguous and ignored for non-permissive tools.
     return "." in token
@@ -297,7 +364,7 @@ class Scope:
         """Return the distinct target strings referenced by a tool call."""
         if self._is_bash_tool(tool_name):
             command = tool_input.get("command")
-            return self._extract_from_command(command) if isinstance(command, str) else []
+            return self._extract_from_command(command)[0] if isinstance(command, str) else []
         targets: list[str] = []
         for field in _NON_BASH_TARGET_FIELDS:
             value = tool_input.get(field)
@@ -312,26 +379,141 @@ class Scope:
         return tool_name.lower() in _BASH_TOOL_NAMES
 
     @classmethod
-    def _extract_from_command(cls, command: str) -> list[str]:
+    def _extract_from_command(cls, command: str) -> tuple[list[str], set[str]]:
+        """Return ``(targets, program_kinds)`` referenced by a Bash command.
+
+        ``program_kinds`` tells the hook which program classes appear across
+        the subcommands (network / local / unknown) so a command with no
+        literal target can still be judged: purely-local command lines are
+        allowed, while network tools, command substitution, or unrecognized
+        programs stay denied.
+        """
         targets: list[str] = list(_URL_RE.findall(command))
-        for sub in re.split(r"&&|\|\||\||;|&", command):
-            sub = sub.strip()
-            if not sub:
+        kinds: set[str] = set()
+        for sub, substituted in cls._iter_subcommands(command):
+            if not sub.strip():
                 continue
+            if substituted:
+                # "$(...)" / backticks splice in text the guard cannot see;
+                # classify as unknown so a no-target verdict stays a deny.
+                kinds.add(_KIND_UNKNOWN)
             try:
                 tokens = shlex.split(sub)
             except ValueError:
                 tokens = sub.split()
             if not tokens:
                 continue
-            program = Path(tokens[0]).name.lower()
-            targets.extend(cls._extract_hosts_from_tokens(program, tokens[1:]))
-        return _dedup(targets)
+            program, rest = cls._unwrap_program(tokens)
+            kinds.add(cls._program_kind(program))
+            targets.extend(cls._extract_hosts_from_tokens(program, rest))
+        return _dedup(targets), kinds
+
+    @staticmethod
+    def _iter_subcommands(command: str) -> list[tuple[str, bool]]:
+        """Quote-aware split on shell operators, dropping redirection bodies.
+
+        Yields ``(fragment, substituted)`` where ``substituted`` flags that
+        the shell would expand text the guard cannot see — ``$(...)`` or a
+        backtick outside single quotes. Single-quoted text is verbatim;
+        heredoc bodies are kept whole through their terminating marker line
+        (and only flag substitution for unquoted markers, which expand).
+        """
+        parts: list[tuple[str, bool]] = []
+        buf: list[str] = []
+        substituted = False
+        quote: str | None = None
+        i, n = 0, len(command)
+        while i < n:
+            ch = command[i]
+            if quote == "'":  # single quotes: fully verbatim until the close
+                buf.append(ch)
+                if ch == "'":
+                    quote = None
+                i += 1
+                continue
+            if quote == '"':
+                if ch == "\\" and i + 1 < n:  # escaped char, incl. \"
+                    buf.append(command[i:i + 2])
+                    i += 2
+                    continue
+                buf.append(ch)
+                if ch == '"':
+                    quote = None
+                elif command.startswith("$(", i) or ch == "`":
+                    substituted = True
+                i += 1
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                buf.append(ch)
+                i += 1
+                continue
+            if command.startswith("$(", i) or ch == "`":
+                substituted = True
+            if ch == "<" and command.startswith("<<", i):
+                # Heredoc: swallow through the terminating marker line so the
+                # body is neither split on ";" nor stripped of ">" chars.
+                m = _HEREDOC_START_RE.match(command, i)
+                end = n
+                if m is not None and m.group(1):
+                    term = re.compile(
+                        r"(?m)^" + re.escape(m.group(1)) + r"[ \t]*$"
+                    ).search(command, m.end())
+                    if term is not None:
+                        end = term.end()
+                body = command[i:end]
+                buf.append(body)
+                # Only an unquoted marker lets the shell expand the body.
+                if (
+                    m is not None
+                    and not any(c in m.group(0) for c in "'\"")
+                    and ("$(" in body or "`" in body)
+                ):
+                    substituted = True
+                i = end
+                continue
+            op = _SUBCMD_SPLIT_RE.match(command, i)
+            if op is not None:
+                parts.append(("".join(buf), substituted))
+                substituted = False
+                buf = []
+                i = op.end()
+                continue
+            buf.append(ch)
+            i += 1
+        parts.append(("".join(buf), substituted))
+        return parts
+
+    @staticmethod
+    def _unwrap_program(tokens: list[str]) -> tuple[str, list[str]]:
+        """See through sudo/env/timeout-style wrappers to the real program."""
+        i = 0
+        while i < len(tokens):
+            name = Path(tokens[i]).name.lower()
+            if name not in _WRAPPER_PROGRAMS:
+                return name, tokens[i + 1:]
+            # Skip the wrapper's own option-ish tokens (flags, durations for
+            # timeout, VAR=assignments for env) to land on the real program.
+            i += 1
+            while i < len(tokens) and (
+                tokens[i].startswith("-") or tokens[i].isdigit() or "=" in tokens[i]
+            ):
+                i += 1
+        return "", tokens[len(tokens):]
+
+    @staticmethod
+    def _program_kind(program: str) -> str:
+        if program in _NETWORK_PROGRAMS:
+            return _KIND_NETWORK
+        if program in _LOCAL_PROGRAMS:
+            return _KIND_LOCAL
+        return _KIND_UNKNOWN
 
     @classmethod
     def _extract_hosts_from_tokens(cls, program: str, args: list[str]) -> list[str]:
         value_flags = _VALUE_FLAGS.get(program, set())
         permissive = program in _PERMISSIVE_PROGRAMS
+        network = program in _NETWORK_PROGRAMS
         hosts: list[str] = []
         header_values: list[str] = []
         skip_next = False
@@ -359,8 +541,14 @@ class Scope:
             if tok.startswith("-"):  # any other flag (boolean or attached)
                 i += 1
                 continue
-            if permissive or _looks_like_host(tok):
+            if tok.isdigit():  # a bare port/number is never a host
+                i += 1
+                continue
+            if permissive or (network and _looks_like_host(tok)):
                 hosts.append(tok)
+            # else: non-network program positional — pattern, filename, or
+            # code snippet — never a network target; leave it to the
+            # whole-command URL / Host-header extraction.
             i += 1
         for header in header_values:
             hm = _HOST_HEADER_RE.search(header)
@@ -375,8 +563,15 @@ class ScopeGuardHook:
     Matches the Claude Agent SDK ``HookCallback`` contract
     ``async (input_data, tool_use_id, context) -> dict[str, Any]``. An allow is
     an empty dict (pass-through); a deny carries the SDK ``hookSpecificOutput``
-    deny decision. A Bash command from which no target host can be extracted is
-    denied outright rather than allowed by accident.
+    deny decision.
+
+    For Bash, only genuine network-request targets participate in the scope
+    judgement: URLs, Host-header overrides, and positionals of network
+    programs. A command that extracts no target is denied unless it consists
+    solely of known local programs — grep patterns, file paths, redirections,
+    and chunk filenames are command data, not targets, and must not block the
+    call. Network tools with no literal target (e.g. ``curl $URL``) and
+    unrecognized programs stay denied (default-deny).
     """
 
     def __init__(self, scope: Scope) -> None:
@@ -391,11 +586,20 @@ class ScopeGuardHook:
         tool_name = str(input_data.get("tool_name", ""))
         raw_input = input_data.get("tool_input")
         tool_input: Mapping[str, Any] = raw_input if isinstance(raw_input, Mapping) else {}
+        command = tool_input.get("command") if Scope._is_bash_tool(tool_name) else None
+        if isinstance(command, str):
+            targets, kinds = self.scope._extract_from_command(command)
+            for target in targets:
+                if not self.scope.is_allowed(target):
+                    return self._deny(f"目标不在授权范围内: {target}")
+            if targets:
+                return {}
+            if kinds and kinds <= {_KIND_LOCAL}:
+                return {}  # purely local command line — no network reach
+            if _KIND_NETWORK in kinds:
+                return self._deny("网络工具未能提取出目标 host（默认拒绝，可能是变量隐藏了目标）")
+            return self._deny("命令包含无法识别的程序，未能提取出目标 host（默认拒绝）")
         targets = self.scope.extract_targets(tool_name, tool_input)
-        if not targets:
-            if Scope._is_bash_tool(tool_name):
-                return self._deny("无法从 Bash 命令中提取出有效的目标 host（默认拒绝）")
-            return {}
         for target in targets:
             if not self.scope.is_allowed(target):
                 return self._deny(f"目标不在授权范围内: {target}")
