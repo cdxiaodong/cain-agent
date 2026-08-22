@@ -49,7 +49,7 @@
 
 - [x] OWASP Top10 技能补全 + framework 专项(2026-08-10,多 Agent 团队完成 13/13:SQLi/XSS/SSRF/命令注入/文件上传/路径遍历/反序列化/信息泄露/CSRF/XXE/SSTI/Open Redirect/文件包含)
 - [x] 云模块扩 AWS / 腾讯云 / Azure / 华为云 / GCP(2026-08-10,七大云厂商全覆盖;含腾讯云 CAM 提权检测)
-- [ ] IAM/RAM 提权路径图可视化
+- [x] IAM/RAM 提权路径图可视化(2026-08-12 iam-graph 分支交付:有向图建模+BFS 提权路径+DOT 导出,已合入 main;ROADMAP 08-22 补记勾选)
 - [x] 2-3 篇技术文章(2026-08-10,多 Agent 团队完成「首个懂国产云」「校验闭环设计」「Benchmark 体系」三篇)
 - [ ] Gitee 同步 + 社区运营
 
