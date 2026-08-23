@@ -41,7 +41,7 @@
 - [x] 中心 Manager 判断聚合:finding 表决 + 记忆旁证 → confidence 结论列表(2026-08-17 交付,08-19 合入)
 - [x] 编排全链路接线:Manager/Solver/验证池/语义记忆接入 `cain-agent run`,report 阶段真实聚合报告,经典 Route A 可回退(2026-08-17 交付,08-19 合入)
 - [x] 第四篇架构文章:从单 Agent 到多 Agent 编排(2026-08-17 交付,08-19 合入)
-- [ ] 编排模式 smoke 验证 + auto_prompt 接入编排层 + 编排 vs 经典 benchmark 对比(2026-08-19 晚已派活)
+- [x] 编排模式 smoke 验证 + auto_prompt 接入编排层 + 编排 vs 经典 benchmark 对比(2026-08-20~22 完成:smoke 零越权走通三阶段、自愈接线 936 绿、benchmark 对比表;后续 scope 误拦修复与 finding fixture 于 08-22 验收合入)
 
 ## Phase 3 · 扩能+传播(原计划 2027.01-04,核心条目已提前至 2026-08-10 完成)
 
