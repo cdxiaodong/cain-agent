@@ -43,6 +43,25 @@
 - [x] 第四篇架构文章:从单 Agent 到多 Agent 编排(2026-08-17 交付,08-19 合入)
 - [x] 编排模式 smoke 验证 + auto_prompt 接入编排层 + 编排 vs 经典 benchmark 对比(2026-08-20~22 完成:smoke 零越权走通三阶段、自愈接线 936 绿、benchmark 对比表;后续 scope 误拦修复与 finding fixture 于 08-22 验收合入)
 
+## Phase 2.7 · pi 后端生态(双执行引擎兼容,2026-08-24 起)
+
+> 执行引擎已双轨(claude / pi),本阶段把 pi 后端从「协议打通」推进到
+> 「生产可用 + 成本优势可证」。
+
+- [ ] pi 真实冒烟:npm install + 真实 LLM 调用,桥 API 字段实测修正,自建靶场
+  `--backend pi` 非 dry-run 全链路 + scope 越权实测
+- [ ] 多 provider 实测:deepseek / openai / google 至少两家跑通,记录行为差异
+- [ ] 工具面扩展:Read / Grep / Glob 注册 + 对应 scope / readonly 拦截
+  (现仅 Bash)
+- [ ] 技能加载适配:SkillLoader 三阶段技能在 pi 后端的 prompt 验证
+- [ ] 中心编排 + FindingsPipeline 双会话(发现≠校验)在 pi 后端实测
+- [ ] benchmark:claude vs pi 同场景对比(确认率 / 耗时 / token 成本)——
+  双后端的价值证明
+- [ ] README(中英)双后端文档 + 桥安装说明
+- [ ] CI:pi 协议测试稳定化;桥依赖版本锁定(package-lock)
+- [ ] 模型路由(深化):pipeline 级混搭 —— recon 用低成本模型、test 用
+  高能力模型,按阶段选 provider/model
+
 ## Phase 3 · 扩能+传播(原计划 2027.01-04,核心条目已提前至 2026-08-10 完成)
 
 > 注:本阶段原排期 2027.01-04;以下标 [x] 的技能/云模块/文章条目已由多 Agent 团队于 2026-08-10 提前交付,剩余 [ ] 项仍按 2027.01-04 窗口推进。
