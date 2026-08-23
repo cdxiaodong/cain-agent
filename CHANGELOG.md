@@ -1,5 +1,18 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-24 · 双执行引擎:pi 后端接入
+
+- **pi 第二执行引擎**(`pi_executor.py` + `toolchain/pi/`):`cain-agent run
+  --backend pi [--pi-provider deepseek --pi-model ...]` 整链路切换执行后端;
+  与 claude 后端同接口,Orchestrator / FindingsPipeline / StageHandler 零改动
+- **Node 桥**(bridge.mjs,stdio JSON 行协议):桥侧每笔工具调用先回 Python
+  侧 ScopeGuardHook 判决,allow 才执行 —— scope 白名单、发现≠校验双会话、
+  默认拒绝、idle/total 双防线的安全语义在 pi 后端一处不降级
+- 多 provider 支持(anthropic/openai/google/deepseek,按需动态加载);
+  `allowed_tools=[]` 时桥不注册任何工具,只读校验通道语义保持
+- 测试 +19 例(fake 子进程驱动,零 Node/零网络):协议收敛 / scope 放行与
+  拒绝 / 审计记录 / matcher 匹配 / idle+total 中断 / 桥缺失防护 / CLI 开关
+
 ## 2026-08-22 · smoke 后续修复:ScopeGuardHook 误拦闭环 + finding 本地 fixture
 
 - **ScopeGuardHook 命令语义误拦修复**(`scope.py` + `test_scope.py`):只有真实
