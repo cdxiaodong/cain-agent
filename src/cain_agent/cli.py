@@ -146,16 +146,48 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="initialize workspace + scope and print execution plan, don't start Agent",
     )
+    run.add_argument(
+        "--backend",
+        choices=("claude", "pi"),
+        default="claude",
+        help="execution engine (default: claude). 'pi' drives the Node bridge "
+        "in toolchain/pi/ (run `npm install` there first) and takes LLM provider "
+        "switching; scope guard + dual-session validation semantics are identical",
+    )
+    run.add_argument(
+        "--pi-provider",
+        default="anthropic",
+        help="LLM provider for the pi backend (default: anthropic; "
+        "openai/google/deepseek available after bridge deps installed)",
+    )
+    run.add_argument(
+        "--pi-model",
+        default=None,
+        help="model id for the pi backend (default: provider default)",
+    )
 
     return parser
 
 
 def _build_executor(args: argparse.Namespace) -> Any:
-    """Construct the discovery SDKExecutor for a run.
+    """Construct the discovery executor for a run.
 
     Kept as a standalone function so tests can monkeypatch it to avoid real
-    Agent starts (zero token spend).
+    Agent starts (zero token spend). Backend is selected by ``--backend``:
+    both engines implement the same contract (``add_pre_tool_use_hook`` /
+    ``run -> ExecutorResult``) so handlers and the findings pipeline are
+    backend-agnostic.
     """
+    if getattr(args, "backend", "claude") == "pi":
+        from cain_agent.pi_executor import PiExecutor
+
+        return PiExecutor(
+            provider=args.pi_provider,
+            model=args.pi_model,
+            allowed_tools=DEFAULT_ALLOWED_TOOLS,
+            idle_timeout=args.idle_timeout,
+            total_budget=args.total_budget,
+        )
     from cain_agent.executor import SDKExecutor
 
     return SDKExecutor(
@@ -166,13 +198,24 @@ def _build_executor(args: argparse.Namespace) -> Any:
 
 
 def _build_validation_executor(args: argparse.Namespace) -> Any:
-    """Construct the validation SDKExecutor — a distinct session from discovery.
+    """Construct the validation executor — a distinct session from discovery.
 
-    只读校验通道:零工具白名单(SDKExecutor 默认),校验 Agent 只输出结构化
-    JSON,不执行任何验证性操作。与 ``_build_executor`` 分开构造,保证
-    FindingsPipeline 的「发现者≠校验者」约束在结构上成立;分开成函数也便于
-    测试独立 monkeypatch(零真实 Agent 启动)。
+    只读校验通道:零工具白名单,校验 Agent 只输出结构化 JSON,不执行任何
+    验证性操作。与 ``_build_executor`` 分开构造,保证 FindingsPipeline 的
+    「发现者≠校验者」约束在结构上成立;分开成函数也便于测试独立
+    monkeypatch(零真实 Agent 启动)。两个后端同样保持零工具语义:
+    pi 桥在不注册任何工具的情况下启动校验会话。
     """
+    if getattr(args, "backend", "claude") == "pi":
+        from cain_agent.pi_executor import PiExecutor
+
+        return PiExecutor(
+            provider=args.pi_provider,
+            model=args.pi_model,
+            allowed_tools=[],  # 只读校验通道:零工具
+            idle_timeout=args.idle_timeout,
+            total_budget=args.total_budget,
+        )
     from cain_agent.executor import SDKExecutor
 
     return SDKExecutor(
@@ -256,7 +299,10 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print(f"  工作区:   {workspace.root.resolve()}", file=stdout)
         print(f"  授权范围: {workspace.path(SCOPE_FILE).resolve()}", file=stdout)
         print("  阶段:     recon → test → report", file=stdout)
+        print(f"  后端:     {args.backend}", file=stdout)
         print(f"  工具白名单: {DEFAULT_ALLOWED_TOOLS}", file=stdout)
+        if args.backend == "pi":
+            print(f"  pi provider/model: {args.pi_provider}/{args.pi_model or '默认'}", file=stdout)
         print("\n  (dry-run: 不启动 Agent)", file=stdout)
         return EXIT_OK
 
