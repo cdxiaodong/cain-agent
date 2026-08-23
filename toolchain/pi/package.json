@@ -1,0 +1,10 @@
+{
+  "name": "cain-agent-pi-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Node bridge for the pi executor backend (stdio JSON protocol).",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.0",
+    "@earendil-works/pi-ai": "^0.84.0"
+  }
+}
