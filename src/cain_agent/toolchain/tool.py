@@ -5,21 +5,21 @@
 - 工具调用前需经过只读白名单校验
 - 危险操作（如 --delete、DROP、rm）被拒绝
 
-参考 T3MP3ST 工具链设计（36+ 工具），但严格限制为只读。
+内置工具按实战侦察、扫描、验证和报告流程组织，并严格限制为只读。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from cain_agent.toolchain.executor import ToolResult
 
 
-class ToolCategory(str, Enum):
+class ToolCategory(StrEnum):
     """工具分类（按 MITRE ATT&CK 阶段）。"""
 
     RECON = "recon"  # TA0043: 侦察

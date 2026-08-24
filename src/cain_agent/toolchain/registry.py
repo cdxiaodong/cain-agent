@@ -471,10 +471,7 @@ class ToolRegistry:
                     return False
 
         # 守门员二次校验
-        if self.guard and not self.guard.check(tool_name, args):
-            return False
-
-        return True
+        return not (self.guard and not self.guard.check(tool_name, args))
 
     def _register_builtin_tools(self) -> None:
         """注册内置只读工具清单。"""

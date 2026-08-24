@@ -7,6 +7,7 @@ real credentials.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -57,7 +58,9 @@ class _FakeObsClient:
 @pytest.fixture
 def fake_boto3(monkeypatch: pytest.MonkeyPatch) -> Any:
     _STATE["buckets"] = {}
-    monkeypatch.setattr(huawei_obs.boto3, "client", lambda *a, **kw: _FakeObsClient(**kw))
+    monkeypatch.setattr(
+        huawei_obs, "boto3", SimpleNamespace(client=lambda *a, **kw: _FakeObsClient(**kw))
+    )
     return _STATE
 
 

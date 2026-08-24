@@ -237,7 +237,10 @@ def _normalize_vulnerability(vuln: dict[str, Any]) -> dict[str, Any]:
     cvss_score = cvss_v3.get("BaseScore") or cvss_v2.get("BaseScore")
     # Use Trivy's severity if available, otherwise derive from CVSS
     trivy_severity = vuln.get("Severity", "UNKNOWN").upper()
-    severity = _severity_by_cvss(cvss_score) if cvss_score is not None else SEVERITY_BY_CVSS.get(trivy_severity, "info")
+    if cvss_score is not None:
+        severity = _severity_by_cvss(cvss_score)
+    else:
+        severity = SEVERITY_BY_CVSS.get(trivy_severity, "info")
 
     return {
         "vulnerability_id": vuln.get("VulnerabilityID", ""),
