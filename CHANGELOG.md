@@ -1,5 +1,20 @@
 # CHANGELOG — cain-agent
 
+## v0.2.0 · 编排验证闭环与双执行引擎
+
+**中文摘要：** Cain 从单会话流水线升级为可回退的中心编排系统：Manager 聚合、
+并行验证池、语义记忆与失败自愈接入 `cain-agent run`；本地 finding fixture 与
+授权目标 smoke 补齐实战验证；benchmark 支持经典/编排同场景对比；新增 pi 执行后端，
+并保持 ScopeGuardHook 默认拒绝与工具白名单语义。详见
+`docs/release/v0.2.0.md`。
+
+**English summary:** Cain now ships a fallback-capable central orchestration flow with
+Manager aggregation, a parallel verification pool, semantic memory, and automatic
+failure recovery. The release also adds deterministic local and authorized-target
+smoke coverage, classic-versus-orchestrated benchmark reporting, and a second `pi`
+execution backend that preserves ScopeGuardHook and tool-allowlist semantics. See
+`docs/release/v0.2.0.md`.
+
 ## 2026-08-24 · 双执行引擎:pi 后端接入
 
 - **pi 第二执行引擎**(`pi_executor.py` + `toolchain/pi/`):`cain-agent run
