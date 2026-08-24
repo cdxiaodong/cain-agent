@@ -1,6 +1,6 @@
 # ROADMAP — cain-agent
 
-> 总目标与排期详见 `/Users/cdxd/Desktop/develop/cloudpentest-agent/DESIGN.md`(设计真源)。
+> 总目标与排期详见 `DESIGN.md(内部设计文档,未随仓库发布)`(设计真源)。
 > 本文件是产线每日执行的任务看板,Lead 每天 21:00 验收后更新勾选状态。
 
 ## Phase 0 · 地基(2026.08)

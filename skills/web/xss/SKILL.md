@@ -69,4 +69,4 @@ severity_focus: high
 - **凭证不落明文**：测试中获取的 Cookie / Token / localStorage 数据，证据只记录类型与是否存在，不存原文。
 - **禁止盲信单次弹窗**：单次 `alert` 成功不足以定级，需确认它在「正常用户访问路径」下可触发（如存储型要在他人访问该页面时触发，而非仅作者本人）。
 XSS_EOF
-echo "=== xss written, lines: $(wc -l < /Users/cdxd/Desktop/develop/cain-agent-wt-web/skills/web/xss/SKILL.md) ==="
+echo "=== xss written, lines: $(wc -l < worktree:skills/web/xss/SKILL.md) ==="
