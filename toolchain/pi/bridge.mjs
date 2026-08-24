@@ -32,34 +32,39 @@ function awaitVerdict(id) {
 }
 
 // ---- Bash 工具(scope 判定在 Python 侧,工具名保持 "Bash" 与 hook matcher 对齐) ----
+//
+// AgentTool 契约(实测 0.84.x):execute(toolCallId, params, ...) 两参起;
+// 返回值 content + details 均必填;label 为 UI 必填字段。
 
 function makeBashTool() {
   return {
     name: "Bash",
+    label: "Bash",
     description: "Run a shell command and return combined stdout/stderr.",
     parameters: {
       type: "object",
       properties: { command: { type: "string" } },
       required: ["command"],
     },
-    async execute({ args }) {
+    async execute(_toolCallId, params) {
+      const command = String(params?.command ?? "");
       const id = String(nextId++);
-      emit({ type: "tool_request", id, name: "Bash", input: { command: args.command } });
+      emit({ type: "tool_request", id, name: "Bash", input: { command } });
       const allow = await awaitVerdict(id);
       if (!allow) {
         const output = "blocked by scope guard: target outside authorized scope";
         emit({ type: "tool_result", id, ok: false, output });
-        return { content: [{ type: "text", text: output }] };
+        return { content: [{ type: "text", text: output }], details: { blocked: true } };
       }
       const output = await new Promise((resolve) => {
-        execFile("bash", ["-c", args.command], { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+        execFile("bash", ["-c", command], { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
           (err, stdout, stderr) => {
             const text = `exit=${err ? (err.code ?? 1) : 0}\n${stdout ?? ""}${stderr ?? ""}`;
             resolve(text.slice(0, 200_000));
           });
       });
       emit({ type: "tool_result", id, ok: true, output });
-      return { content: [{ type: "text", text: output }] };
+      return { content: [{ type: "text", text: output }], details: { blocked: false } };
     },
   };
 }
@@ -85,6 +90,27 @@ async function loadProvider(name) {
   return typeof factory === "function" ? factory : null;
 }
 
+// ---- 自定义网关(可选) -----------------------------------------------------------
+//
+// PI_BASE_URL 指向 Anthropic Messages 协议兼容网关时:目录内模型覆盖 baseUrl,
+// 目录外模型名透传构造(ad-hoc Model,最小必填字段)。auth 仍走 provider 的
+// 环境变量约定(ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY / ...)。
+
+function makeAdHocModel(provider, id, baseUrl) {
+  return {
+    id,
+    name: id,
+    api: "anthropic-messages",
+    provider,
+    baseUrl,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: {},
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+  };
+}
+
 // ---- 主流程 -------------------------------------------------------------------
 
 async function main(task) {
@@ -97,17 +123,29 @@ async function main(task) {
   }
   models.setProvider(providerFactory());
 
+  const baseUrlOverride = process.env.PI_BASE_URL || null;
+
   let model = null;
   if (task.model) {
-    model = models.getModel(providerName, String(task.model));
-    if (!model) {
+    model = models.getModel(providerName, String(task.model)) ?? null;
+    if (!model && !baseUrlOverride) {
       emit({ type: "done", text: "", usage: null, numTurns: 0, error: `unknown model: ${providerName}/${task.model}` });
       return;
+    }
+    if (!model) {
+      model = makeAdHocModel(providerName, String(task.model), baseUrlOverride);
+    } else if (baseUrlOverride) {
+      model = { ...model, baseUrl: baseUrlOverride };
     }
   }
 
   const tools = Array.isArray(task.tools) ? task.tools : [];
   const agentTools = tools.includes("Bash") ? [makeBashTool()] : [];
+
+  // 轮次上限:Agent 无 setMaxTurns(实测 0.84.x),用 shouldStopAfterTurn 计数拦截;
+  // 计数恒启用(done.numTurns 有意义),maxTurns>0 时才触发停轮。
+  const maxTurns = task.maxTurns ? Number(task.maxTurns) : 0;
+  let turnsDone = 0;
 
   const agent = new Agent({
     initialState: {
@@ -119,23 +157,39 @@ async function main(task) {
       tools: agentTools,
     },
     streamFn: models.streamSimple.bind(models),
+    shouldStopAfterTurn: () => {
+      turnsDone += 1;
+      return maxTurns > 0 && turnsDone >= maxTurns;
+    },
   });
 
+  // agent_end(实测 0.84.x)只带 messages: AgentMessage[] —— 最终文本/usage 从
+  // 最后一条 assistant 消息提取;numTurns 以 shouldStopAfterTurn 计数为准。
   let finalText = "";
   let usage = null;
   const unsub = agent.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
       emit({ type: "text", delta: event.assistantMessageEvent.delta });
     } else if (event.type === "agent_end") {
-      const msg = event.assistantMessage ?? {};
-      finalText = typeof msg.content === "string" ? msg.content : finalText;
-      usage = event.usage ?? msg.usage ?? null;
+      for (let i = event.messages.length - 1; i >= 0; i--) {
+        const msg = event.messages[i];
+        if (msg?.role !== "assistant") continue;
+        if (Array.isArray(msg.content)) {
+          finalText = msg.content
+            .filter((c) => c?.type === "text")
+            .map((c) => c.text)
+            .join("");
+        } else if (typeof msg.content === "string") {
+          finalText = msg.content;
+        }
+        usage = msg.usage ?? null;
+        break;
+      }
     }
   });
 
   let error = null;
   try {
-    if (task.maxTurns) agent.setMaxTurns?.(Number(task.maxTurns));
     await agent.prompt(String(task.prompt ?? ""));
     await agent.waitForIdle();
   } catch (err) {
@@ -143,10 +197,14 @@ async function main(task) {
   } finally {
     unsub();
   }
-  emit({ type: "done", text: finalText, usage, numTurns: 0, error });
+  emit({ type: "done", text: finalText, usage, numTurns: turnsDone, error });
 }
 
 // ---- stdio 驱动 ----------------------------------------------------------------
+
+// stdin EOF 不立即退出:等运行中的 run 收敛(管道模式下 echo 完就 EOF,
+// 立即 exit 会杀掉进行中的执行;Python 侧持续持有 stdin,行为不变)。
+let running = null;
 
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
@@ -164,10 +222,20 @@ rl.on("line", (line) => {
     }
     return;
   }
-  if (msg.type === "run") {
-    main(msg).catch((err) => {
-      emit({ type: "done", text: "", usage: null, numTurns: 0, error: String(err?.message ?? err) });
-    });
+  if (msg.type === "run" && !running) {
+    running = main(msg)
+      .catch((err) => {
+        emit({ type: "done", text: "", usage: null, numTurns: 0, error: String(err?.message ?? err) });
+      })
+      .finally(() => {
+        running = null;
+      });
   }
 });
-rl.on("close", () => process.exit(0));
+rl.on("close", () => {
+  if (running) {
+    running.then(() => process.exit(0));
+  } else {
+    process.exit(0);
+  }
+});

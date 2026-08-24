@@ -44,5 +44,16 @@ cain-agent run --target http://your-range.example/ \
 ```
 
 环境变量:provider 的 API key 走各自约定(`ANTHROPIC_API_KEY` /
-`OPENAI_API_KEY` / `GOOGLE_API_KEY` / `DEEPSEEK_API_KEY`),桥进程继承
-当前 shell 环境。
+`OPENAI_API_KEY` / `GOOGLE_API_KEY` / `DEEPSEEK_API_KEY`,anthropic 亦认
+`ANTHROPIC_AUTH_TOKEN` Bearer),桥进程继承当前 shell 环境。
+
+可选 `PI_BASE_URL`:指向 Anthropic Messages 协议兼容网关时,目录内模型
+覆盖请求地址、目录外模型名(如网关自有模型)透传构造,auth 仍走上述环境
+变量约定。例:
+
+```bash
+export PI_BASE_URL="http://127.0.0.1:15721"      # 网关地址
+export ANTHROPIC_AUTH_TOKEN=...                    # 网关凭证
+cain-agent run --target http://your-range.example/ \
+  --backend pi --pi-model your-gateway-model-id
+```
