@@ -7,3 +7,5 @@ dist/
 build/
 *.bak
 tmp_policy_actions.txt
+.claude/
+.codex/
