@@ -138,7 +138,12 @@ class PiExecutor:
     # -- 运行面 ----------------------------------------------------------
 
     async def _spawn_bridge(self) -> Any:
-        """起桥子进程;测试注入 fake 进程时覆写本方法。"""
+        """起桥子进程;测试注入 fake 进程时覆写本方法。
+
+        ``limit`` 抬高 StreamReader 读行上限:recon 级长输出的 ``done`` 行
+        (单行全文)会超过 asyncio 默认 64KB,触发
+        ``ValueError: Separator is not found, and chunk exceed the limit``。
+        """
         if not self.bridge_path.exists():
             raise FileNotFoundError(
                 f"pi bridge not found: {self.bridge_path} "
@@ -150,6 +155,7 @@ class PiExecutor:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            limit=32 * 1024 * 1024,
         )
 
     async def _judge(
