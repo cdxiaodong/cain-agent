@@ -14,7 +14,7 @@ docker build -t cain-agent:latest .
 docker run --rm cain-agent:latest --version
 ```
 
-输出形如 `cain-agent 0.1.0` 即镜像可用。
+输出形如 `cain-agent 0.2.0` 即镜像可用。
 
 ## 镜像特征
 
