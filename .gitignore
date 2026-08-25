@@ -9,3 +9,6 @@ build/
 tmp_policy_actions.txt
 .claude/
 .codex/
+toolchain/pi/node_modules/
+workspace/
+workspace-*/
