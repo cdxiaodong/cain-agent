@@ -7,6 +7,7 @@ real credentials.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -66,7 +67,7 @@ class _FakeS3Client:
 @pytest.fixture
 def fake_boto3(monkeypatch: pytest.MonkeyPatch) -> Any:
     _STATE["buckets"] = {}
-    monkeypatch.setattr(aws_s3.boto3, "client", lambda *a, **kw: _FakeS3Client(**kw))
+    monkeypatch.setattr(aws_s3, "boto3", SimpleNamespace(client=lambda *a, **kw: _FakeS3Client(**kw)))
     return _STATE
 
 

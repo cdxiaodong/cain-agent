@@ -36,6 +36,7 @@ AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 的**云渗透模块**—�
 git clone https://github.com/cdxiaodong/cain-agent
 cd cain-agent
 pip install -e .          # 或: uv pip install -e .
+pip install -e ".[cloud]" # 可选启用 AWS S3、华为 OBS 与 Kubernetes 检查
 
 cain-agent --version
 ```

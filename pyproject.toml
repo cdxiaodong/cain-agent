@@ -13,6 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cloud = [
+    "boto3>=1.34",
+    "kubernetes>=28.1",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",

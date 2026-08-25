@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cain_agent.multi_agent.types import SolverResult, SolverTask

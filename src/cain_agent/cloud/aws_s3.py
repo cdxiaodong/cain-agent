@@ -28,8 +28,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-import boto3
-
 __all__ = [
     "ACL_PRIVATE",
     "ACL_PUBLIC_READ",
@@ -67,6 +65,23 @@ _ENV_AK_SECRET = ("AWS_SECRET_ACCESS_KEY",)
 _ENV_REGION = ("AWS_DEFAULT_REGION", "AWS_REGION")
 
 _DEFAULT_REGION = "us-east-1"
+
+# Loaded only when a checker builds its first client so importing this module
+# remains safe in a base installation without optional cloud SDKs.
+boto3: Any = None
+
+
+def _load_boto3() -> Any:
+    global boto3
+    if boto3 is None:
+        try:
+            import boto3 as boto3_module
+        except ImportError as exc:
+            raise ImportError(
+                "boto3 is required for S3 checks; install it with cain-agent[cloud]"
+            ) from exc
+        boto3 = boto3_module
+    return boto3
 
 
 @dataclass
@@ -115,7 +130,7 @@ class S3ExposureChecker:
     # -- boto3 client construction (mockable seam) ---------------------------
     def _client(self) -> Any:
         if self._client_cache is None:
-            self._client_cache = boto3.client(
+            self._client_cache = _load_boto3().client(
                 "s3",
                 aws_access_key_id=self.access_key_id,
                 aws_secret_access_key=self.access_key_secret,

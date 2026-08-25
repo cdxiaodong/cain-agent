@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from cain_agent.executor import SDKExecutor
-from cain_agent.findings import Finding, FindingResult, Severity, classify, dedup
+from cain_agent.findings import Finding, FindingResult, classify, dedup
 from cain_agent.multi_agent import types as ma_types
 from cain_agent.multi_agent.verify_pool import (
     ValidationConsensus,

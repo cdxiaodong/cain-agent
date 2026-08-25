@@ -25,13 +25,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    import kubernetes.client
-    from kubernetes import config
-except ImportError:
-    kubernetes = None  # type: ignore
-    config = None  # type: ignore
-
 __all__ = [
     "K8sCredentialError",
     "K8sRbacChecker",
@@ -142,6 +135,25 @@ _ENV_KUBECONFIG = ("KUBECONFIG",)
 
 _DEFAULT_KUBECONFIG = os.path.expanduser("~/.kube/config")
 
+# Loaded when a checker is constructed; collection must not require the SDK.
+kubernetes: Any = None
+config: Any = None
+
+
+def _load_kubernetes() -> tuple[Any, Any]:
+    global kubernetes, config
+    if kubernetes is None or config is None:
+        try:
+            import kubernetes as kubernetes_module
+            from kubernetes import config as config_module
+        except ImportError as exc:
+            raise ImportError(
+                "kubernetes is required for RBAC checks; install it with cain-agent[cloud]"
+            ) from exc
+        kubernetes = kubernetes_module
+        config = config_module
+    return kubernetes, config
+
 
 @dataclass
 class K8sRbacFinding:
@@ -184,15 +196,14 @@ class K8sRbacChecker:
         kubeconfig_path: str | None = None,
         in_cluster: bool = False,
     ) -> None:
-        if kubernetes is None:
-            raise ImportError("kubernetes package is required for K8sRbacChecker")
+        config_sdk = _load_kubernetes()[1]
 
         self.in_cluster = in_cluster
         self.kubeconfig_path = kubeconfig_path or _first_env(_ENV_KUBECONFIG) or _DEFAULT_KUBECONFIG
 
         if in_cluster:
             try:
-                config.load_incluster_config()
+                config_sdk.load_incluster_config()
             except Exception as exc:
                 raise K8sCredentialError(
                     f"In-cluster config load failed: {exc}. Ensure running inside "
@@ -205,31 +216,31 @@ class K8sRbacChecker:
                     "a valid kubeconfig path or run inside a Kubernetes cluster."
                 )
             try:
-                config.load_kube_config(config_file=self.kubeconfig_path)
+                config_sdk.load_kube_config(config_file=self.kubeconfig_path)
             except Exception as exc:
                 raise K8sCredentialError(
                     f"Failed to load kubeconfig from {self.kubeconfig_path}: {exc}"
                 ) from exc
 
-        self._api_client: kubernetes.client.ApiClient | None = None
-        self._rbac_api: kubernetes.client.RbacAuthorizationV1Api | None = None
-        self._core_api: kubernetes.client.CoreV1Api | None = None
+        self._api_client: Any = None
+        self._rbac_api: Any = None
+        self._core_api: Any = None
 
     # -- kubernetes client construction (mockable seams) --------------------
     @property
-    def api_client(self) -> kubernetes.client.ApiClient:
+    def api_client(self) -> Any:
         if self._api_client is None:
             self._api_client = kubernetes.client.ApiClient()
         return self._api_client
 
     @property
-    def rbac_api(self) -> kubernetes.client.RbacAuthorizationV1Api:
+    def rbac_api(self) -> Any:
         if self._rbac_api is None:
             self._rbac_api = kubernetes.client.RbacAuthorizationV1Api(self.api_client)
         return self._rbac_api
 
     @property
-    def core_api(self) -> kubernetes.client.CoreV1Api:
+    def core_api(self) -> Any:
         if self._core_api is None:
             self._core_api = kubernetes.client.CoreV1Api(self.api_client)
         return self._core_api
@@ -545,9 +556,10 @@ def _analyze_role_rules(rules: list[Any]) -> list[str]:
 
         rule_resources = _as_list(rule_dict.get("resources", []))
         rule_verbs = _as_list(rule_dict.get("verbs", []))
+        first_resource = rule_resources[0] if rule_resources else ""
 
         for priv_rule in PRIVILEGE_RULES:
-            if _matches_rule(priv_rule["resource"], priv_rule["verbs"], rule_resources[0] if rule_resources else "", rule_verbs):
+            if _matches_rule(priv_rule["resource"], priv_rule["verbs"], first_resource, rule_verbs):
                 matched_paths.add(priv_rule["path"])
 
     return sorted(matched_paths)
