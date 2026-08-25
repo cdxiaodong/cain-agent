@@ -1,6 +1,6 @@
 [project]
 name = "cain-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "Real-world AI Penetration Testing Engineer — authorized security assessments with a built-in cloud module"
 readme = "README.md"
 license = { text = "Apache-2.0" }
