@@ -32,8 +32,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-import boto3
-
 __all__ = [
     "ACL_PRIVATE",
     "ACL_PUBLIC_READ",
@@ -68,6 +66,22 @@ _ENV_AK_SECRET = ("HUAWEICLOUD_SECRET_ACCESS_KEY", "OBS_SECRET_ACCESS_KEY")
 _ENV_REGION = ("HUAWEICLOUD_REGION", "OBS_REGION")
 
 _DEFAULT_REGION = "cn-north-4"
+
+# boto3 is an optional runtime dependency for this S3-compatible provider.
+boto3: Any = None
+
+
+def _load_boto3() -> Any:
+    global boto3
+    if boto3 is None:
+        try:
+            import boto3 as boto3_module
+        except ImportError as exc:
+            raise ImportError(
+                "boto3 is required for OBS checks; install it with cain-agent[cloud]"
+            ) from exc
+        boto3 = boto3_module
+    return boto3
 
 
 @dataclass
@@ -118,7 +132,7 @@ class ObsExposureChecker:
         """Build a boto3 S3-compatible client pointed at the OBS endpoint."""
         if self._client_cache is None:
             endpoint = f"https://obs.{self.region}.myhuaweicloud.com"
-            self._client_cache = boto3.client(
+            self._client_cache = _load_boto3().client(
                 "s3",
                 aws_access_key_id=self.access_key_id,
                 aws_secret_access_key=self.access_key_secret,

@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 __all__ = [
     "IamGraph",
@@ -243,7 +244,7 @@ class IamGraph:
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     @classmethod
-    def from_json(cls, text: str) -> "IamGraph":
+    def from_json(cls, text: str) -> IamGraph:
         """从 ``to_json`` 的产出还原图;结构非法一律抛 ``IamGraphError``。"""
         try:
             payload = json.loads(text)

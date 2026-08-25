@@ -18,10 +18,9 @@ from cain_agent.cloud.docker_image import (
     CVSS_HIGH_THRESHOLD,
     CVSS_LOW_THRESHOLD,
     CVSS_MEDIUM_THRESHOLD,
-    DockerCredentialError,
+    SEVERITY_BY_CVSS,
     DockerFinding,
     DockerImageChecker,
-    SEVERITY_BY_CVSS,
     _as_list,
     _build_evidence,
     _classify_overall_severity,
@@ -447,8 +446,22 @@ def test_classify_overall_severity_mixed() -> None:
 
 def test_build_evidence_groups_by_severity() -> None:
     vulns = [
-        {"vulnerability_id": "CVE-1", "pkg_name": "pkg1", "installed_version": "1.0", "fixed_version": "1.1", "cvss_score": 9.0, "severity": "critical"},
-        {"vulnerability_id": "CVE-2", "pkg_name": "pkg2", "installed_version": "2.0", "fixed_version": "2.1", "cvss_score": 5.0, "severity": "medium"},
+        {
+            "vulnerability_id": "CVE-1",
+            "pkg_name": "pkg1",
+            "installed_version": "1.0",
+            "fixed_version": "1.1",
+            "cvss_score": 9.0,
+            "severity": "critical",
+        },
+        {
+            "vulnerability_id": "CVE-2",
+            "pkg_name": "pkg2",
+            "installed_version": "2.0",
+            "fixed_version": "2.1",
+            "cvss_score": 5.0,
+            "severity": "medium",
+        },
     ]
     scan_result = {
         "metadata": {
@@ -486,7 +499,14 @@ def test_evidence_contains_scan_metadata() -> None:
 
 def test_evidence_no_sensitive_data() -> None:
     vulns = [
-        {"vulnerability_id": "CVE-1", "pkg_name": "pkg1", "installed_version": "1.0", "fixed_version": "1.1", "cvss_score": 9.0, "severity": "critical"},
+        {
+            "vulnerability_id": "CVE-1",
+            "pkg_name": "pkg1",
+            "installed_version": "1.0",
+            "fixed_version": "1.1",
+            "cvss_score": 9.0,
+            "severity": "critical",
+        },
     ]
     scan_result = {"metadata": {}, "Results": []}
     evidence = _build_evidence(vulns, scan_result)

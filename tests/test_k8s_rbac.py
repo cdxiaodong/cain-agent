@@ -9,17 +9,18 @@ depend on (``ApiClient``, ``RbacAuthorizationV1Api``, ``CoreV1Api`` and the
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from cain_agent.cloud import k8s_rbac
 from cain_agent.cloud.k8s_rbac import (
+    PRIVILEGE_RULES,
+    SEVERITY_BY_PATH,
     K8sCredentialError,
     K8sRbacChecker,
     K8sRbacFinding,
-    PRIVILEGE_RULES,
-    SEVERITY_BY_PATH,
     _analyze_role_rules,
     _severity_for_paths,
 )
@@ -139,11 +140,19 @@ def fake_k8s(monkeypatch: pytest.MonkeyPatch) -> Any:
         "role_bindings": {},
         "namespaces": [],
     })
-    monkeypatch.setattr(k8s_rbac.kubernetes.client, "ApiClient", _FakeApiClient)
-    monkeypatch.setattr(k8s_rbac.kubernetes.client, "RbacAuthorizationV1Api", lambda _: _FakeRbacApi())
-    monkeypatch.setattr(k8s_rbac.kubernetes.client, "CoreV1Api", lambda _: _FakeCoreApi())
+    monkeypatch.setattr(
+        k8s_rbac,
+        "kubernetes",
+        SimpleNamespace(
+            client=SimpleNamespace(
+                ApiClient=_FakeApiClient,
+                RbacAuthorizationV1Api=lambda _: _FakeRbacApi(),
+                CoreV1Api=lambda _: _FakeCoreApi(),
+            )
+        ),
+    )
     # Mock config.load_kube_config to do nothing
-    monkeypatch.setattr(k8s_rbac.config, "load_kube_config", lambda **_: None)
+    monkeypatch.setattr(k8s_rbac, "config", SimpleNamespace(load_kube_config=lambda **_: None))
     # Mock os.path.exists to return True for fake kubeconfig
     monkeypatch.setattr(k8s_rbac.os.path, "exists", lambda _: True)
     return _K8S_STATE
@@ -174,6 +183,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("KUBECONFIG", raising=False)
 
 
+@pytest.mark.usefixtures("fake_k8s")
 def test_checker_requires_kubeconfig_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(k8s_rbac.os.path, "exists", lambda _: False)
     monkeypatch.delenv("KUBECONFIG", raising=False)
@@ -181,18 +191,20 @@ def test_checker_requires_kubeconfig_path(monkeypatch: pytest.MonkeyPatch) -> No
         K8sRbacChecker()
 
 
+@pytest.mark.usefixtures("fake_k8s")
 def test_kubeconfig_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KUBECONFIG", "/env/config.yaml")
     monkeypatch.setattr(k8s_rbac.os.path, "exists", lambda _: True)
-    monkeypatch.setattr(k8s_rbac.config, "load_kube_config", lambda **_: None)
+    monkeypatch.setattr(k8s_rbac, "config", SimpleNamespace(load_kube_config=lambda **_: None))
     checker = K8sRbacChecker()
     assert checker.kubeconfig_path == "/env/config.yaml"
 
 
+@pytest.mark.usefixtures("fake_k8s")
 def test_param_kubeconfig_takes_priority(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KUBECONFIG", "/env/config.yaml")
     monkeypatch.setattr(k8s_rbac.os.path, "exists", lambda _: True)
-    monkeypatch.setattr(k8s_rbac.config, "load_kube_config", lambda **_: None)
+    monkeypatch.setattr(k8s_rbac, "config", SimpleNamespace(load_kube_config=lambda **_: None))
     checker = K8sRbacChecker(kubeconfig_path="/param/config.yaml")
     assert checker.kubeconfig_path == "/param/config.yaml"
 

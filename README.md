@@ -36,6 +36,7 @@ Built on the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 git clone https://github.com/cdxiaodong/cain-agent
 cd cain-agent
 pip install -e .          # or: uv pip install -e .
+pip install -e ".[cloud]" # optional AWS S3, Huawei OBS, and Kubernetes checks
 
 cain-agent --version
 ```
