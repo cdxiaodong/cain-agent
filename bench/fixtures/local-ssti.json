@@ -14,6 +14,6 @@
   "expected": {
     "issue_type": "ssti",
     "proof_marker": "<ssti-proof>49</ssti-proof>",
-    "finding_reason": "SSTI payload evaluated"
+    "finding_reason": "{{7*7}} evaluated to 49"
   }
 }
