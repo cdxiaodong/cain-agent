@@ -83,6 +83,12 @@ python bench/run_benchmark.py \
 python bench/run_benchmark.py \
   --suite local-finding-fixture \
   --output results/local-finding-fixture.json
+
+# 双后端编排链路对比：同一 SSTI fixture，claude 与 pi(网关模型)各 N 轮
+export PI_BASE_URL="http://127.0.0.1:15721"   # pi 侧网关
+python bench/run_benchmark.py \
+  --backend-compare --repeat 3 --pi-model glm-5.3 \
+  --output results/bench-backends.md
 ```
 
 对比输入的 `scenarios` 数组中，每项包含唯一 `id`，以及 `classic`、
