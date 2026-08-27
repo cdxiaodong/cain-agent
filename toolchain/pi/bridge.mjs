@@ -76,6 +76,8 @@ const PROVIDER_MODULES = {
   openai: "openai",
   google: "google",
   deepseek: "deepseek",
+  "github-copilot": "github-copilot",
+  openrouter: "openrouter",
 };
 
 async function loadProvider(name) {
@@ -167,6 +169,7 @@ async function main(task) {
   // 最后一条 assistant 消息提取;numTurns 以 shouldStopAfterTurn 计数为准。
   let finalText = "";
   let usage = null;
+  let error = null;
   const unsub = agent.subscribe((event) => {
     if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
       emit({ type: "text", delta: event.assistantMessageEvent.delta });
@@ -183,12 +186,14 @@ async function main(task) {
           finalText = msg.content;
         }
         usage = msg.usage ?? null;
+        if (msg.stopReason === "error") {
+          error = String(msg.errorMessage || "provider request failed");
+        }
         break;
       }
     }
   });
 
-  let error = null;
   try {
     await agent.prompt(String(task.prompt ?? ""));
     await agent.waitForIdle();

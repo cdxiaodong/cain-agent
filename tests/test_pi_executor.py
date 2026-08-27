@@ -119,6 +119,14 @@ def test_pi_build_options_snapshot() -> None:
     assert snap["allowed_tools"] == ["Bash"]
 
 
+def test_pi_bridge_registers_additional_providers_and_propagates_errors() -> None:
+    bridge = BRIDGE.read_text(encoding="utf-8")
+    assert '"github-copilot": "github-copilot"' in bridge
+    assert 'openrouter: "openrouter"' in bridge
+    assert 'msg.stopReason === "error"' in bridge
+    assert "msg.errorMessage" in bridge
+
+
 def test_pi_constructor_validation() -> None:
     with pytest.raises(ValueError):
         PiExecutor(idle_timeout=0)

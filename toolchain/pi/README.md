@@ -2,7 +2,8 @@
 
 `cain-agent run --backend pi` 时,Python 侧 `PiExecutor` 会 spawn 本目录的
 `bridge.mjs`(Node 子进程),经 stdio JSON 行协议驱动 agent 运行时,LLM provider
-可切换(anthropic / openai / google / deepseek …)。
+可切换(anthropic / openai / google / deepseek / openrouter /
+github-copilot …)。
 
 ## 安装(一次性)
 
@@ -44,7 +45,8 @@ cain-agent run --target http://your-range.example/ \
 ```
 
 环境变量:provider 的 API key 走各自约定(`ANTHROPIC_API_KEY` /
-`OPENAI_API_KEY` / `GOOGLE_API_KEY` / `DEEPSEEK_API_KEY`,anthropic 亦认
+`OPENAI_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY` /
+`OPENROUTER_API_KEY` / `COPILOT_GITHUB_TOKEN`,anthropic 亦认
 `ANTHROPIC_AUTH_TOKEN` Bearer),桥进程继承当前 shell 环境。
 
 可选 `PI_BASE_URL`:指向 Anthropic Messages 协议兼容网关时,目录内模型
