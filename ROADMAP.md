@@ -48,15 +48,16 @@
 > 执行引擎已双轨(claude / pi),本阶段把 pi 后端从「协议打通」推进到
 > 「生产可用 + 成本优势可证」。
 
-- [ ] pi 真实冒烟:npm install + 真实 LLM 调用,桥 API 字段实测修正,自建靶场
-  `--backend pi` 非 dry-run 全链路 + scope 越权实测
-- [ ] 多 provider 实测:deepseek / openai / google 至少两家跑通,记录行为差异
-- [ ] 工具面扩展:Read / Grep / Glob 注册 + 对应 scope / readonly 拦截
-  (现仅 Bash)
+- [x] pi 真实冒烟:npm install + 真实 LLM 调用,桥 API 字段实测修正,自建靶场
+  `--backend pi` 非 dry-run 全链路 + scope 越权实测(2026-08-25,桥 API 6 处修正+网关支持)
+- [x] 多 provider 实测:deepseek / openai / google 至少两家跑通,记录行为差异
+  (2026-08-27,provider 路由扩展+错误传播,含 openrouter/github-copilot)
+- [x] 工具面扩展:Read / Grep / Glob 注册 + 对应 scope / readonly 拦截
+  (2026-08-27,判决回 Python,白名单对齐 claude 后端)
 - [ ] 技能加载适配:SkillLoader 三阶段技能在 pi 后端的 prompt 验证
 - [ ] 中心编排 + FindingsPipeline 双会话(发现≠校验)在 pi 后端实测
-- [ ] benchmark:claude vs pi 同场景对比(确认率 / 耗时 / token 成本)——
-  双后端的价值证明
+- [x] benchmark:claude vs pi 同场景对比(确认率 / 耗时 / token 成本)——
+  双后端的价值证明(2026-08-27,bench-backends-2026-08-26.md)
 - [ ] README(中英)双后端文档 + 桥安装说明
 - [ ] CI:pi 协议测试稳定化;桥依赖版本锁定(package-lock)
 - [ ] 模型路由(深化):pipeline 级混搭 —— recon 用低成本模型、test 用
