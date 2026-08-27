@@ -32,6 +32,10 @@ scope 判定逻辑单点在 `src/cain_agent/scope.py` 的 ScopeGuardHook,
 双会话(发现≠校验)、默认拒绝、idle/total 双防线全部在 Python 侧,
 与 claude 后端语义一致。
 
+发现会话按 `allowed_tools` 注册 `Bash` / `Read` / `Grep` / `Glob`;
+未列入白名单的工具不注册,即使桥收到异常工具请求也由 Python 侧拒绝。
+Read/Grep/Glob 的只读放行由 Python hook matcher 判决,桥内不含放行策略。
+
 ## 用法示例
 
 ```bash
