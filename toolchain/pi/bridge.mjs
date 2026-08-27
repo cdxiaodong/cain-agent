@@ -14,6 +14,7 @@
 
 import { createInterface } from "node:readline";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels } from "@earendil-works/pi-ai";
 
@@ -31,10 +32,43 @@ function awaitVerdict(id) {
   return new Promise((resolve) => pendingVerdicts.set(id, resolve));
 }
 
-// ---- Bash 工具(scope 判定在 Python 侧,工具名保持 "Bash" 与 hook matcher 对齐) ----
+// ---- 工具面(判定在 Python 侧,工具名与 allowed_tools / hook matcher 对齐) ---------
 //
 // AgentTool 契约(实测 0.84.x):execute(toolCallId, params, ...) 两参起;
 // 返回值 content + details 均必填;label 为 UI 必填字段。
+
+function textResult(text, blocked = false) {
+  return { content: [{ type: "text", text }], details: { blocked } };
+}
+
+function withPythonVerdict(tool) {
+  return {
+    ...tool,
+    async execute(toolCallId, params, ...rest) {
+      const id = String(nextId++);
+      emit({ type: "tool_request", id, name: tool.name, input: params ?? {} });
+      const allow = await awaitVerdict(id);
+      if (!allow) {
+        const output = "blocked by Python tool guard";
+        emit({ type: "tool_result", id, ok: false, output });
+        return textResult(output, true);
+      }
+      try {
+        const result = await tool.execute(toolCallId, params ?? {}, ...rest);
+        const output = result.content
+          .filter((item) => item?.type === "text")
+          .map((item) => item.text)
+          .join("\n");
+        emit({ type: "tool_result", id, ok: true, output });
+        return result;
+      } catch (err) {
+        const output = String(err?.message ?? err);
+        emit({ type: "tool_result", id, ok: false, output });
+        return { ...textResult(output), isError: true };
+      }
+    },
+  };
+}
 
 function makeBashTool() {
   return {
@@ -48,14 +82,6 @@ function makeBashTool() {
     },
     async execute(_toolCallId, params) {
       const command = String(params?.command ?? "");
-      const id = String(nextId++);
-      emit({ type: "tool_request", id, name: "Bash", input: { command } });
-      const allow = await awaitVerdict(id);
-      if (!allow) {
-        const output = "blocked by scope guard: target outside authorized scope";
-        emit({ type: "tool_result", id, ok: false, output });
-        return { content: [{ type: "text", text: output }], details: { blocked: true } };
-      }
       const output = await new Promise((resolve) => {
         execFile("bash", ["-c", command], { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
           (err, stdout, stderr) => {
@@ -63,8 +89,86 @@ function makeBashTool() {
             resolve(text.slice(0, 200_000));
           });
       });
-      emit({ type: "tool_result", id, ok: true, output });
-      return { content: [{ type: "text", text: output }], details: { blocked: false } };
+      return textResult(output);
+    },
+  };
+}
+
+function makeReadTool() {
+  return {
+    name: "Read",
+    label: "Read",
+    description: "Read a text file, optionally selecting a line range.",
+    parameters: {
+      type: "object",
+      properties: {
+        file_path: { type: "string" },
+        offset: { type: "integer", minimum: 1 },
+        limit: { type: "integer", minimum: 1 },
+      },
+      required: ["file_path"],
+    },
+    async execute(_toolCallId, params) {
+      const content = await readFile(String(params.file_path), "utf8");
+      const lines = content.split("\n");
+      const start = Math.max(0, Number(params.offset ?? 1) - 1);
+      const end = params.limit == null ? lines.length : start + Number(params.limit);
+      return textResult(lines.slice(start, end).join("\n").slice(0, 200_000));
+    },
+  };
+}
+
+function execRg(args) {
+  return new Promise((resolve, reject) => {
+    execFile("rg", args, { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err && err.code !== 1) {
+          reject(new Error(stderr || err.message));
+          return;
+        }
+        resolve(String(stdout ?? "").slice(0, 200_000));
+      });
+  });
+}
+
+function makeGrepTool() {
+  return {
+    name: "Grep",
+    label: "Grep",
+    description: "Search file contents with a regular expression.",
+    parameters: {
+      type: "object",
+      properties: {
+        pattern: { type: "string" },
+        path: { type: "string" },
+        glob: { type: "string" },
+      },
+      required: ["pattern"],
+    },
+    async execute(_toolCallId, params) {
+      const args = ["--line-number", "--color", "never"];
+      if (params.glob) args.push("--glob", String(params.glob));
+      args.push(String(params.pattern), String(params.path ?? "."));
+      return textResult(await execRg(args));
+    },
+  };
+}
+
+function makeGlobTool() {
+  return {
+    name: "Glob",
+    label: "Glob",
+    description: "List files matching a glob pattern.",
+    parameters: {
+      type: "object",
+      properties: { pattern: { type: "string" }, path: { type: "string" } },
+      required: ["pattern"],
+    },
+    async execute(_toolCallId, params) {
+      const output = await execRg([
+        "--files", "--color", "never", "--glob", String(params.pattern), String(params.path ?? "."),
+      ]);
+      return textResult(output);
     },
   };
 }
@@ -142,7 +246,15 @@ async function main(task) {
   }
 
   const tools = Array.isArray(task.tools) ? task.tools : [];
-  const agentTools = tools.includes("Bash") ? [makeBashTool()] : [];
+  const toolFactories = {
+    Bash: makeBashTool,
+    Read: makeReadTool,
+    Grep: makeGrepTool,
+    Glob: makeGlobTool,
+  };
+  const agentTools = tools
+    .filter((name) => Object.hasOwn(toolFactories, name))
+    .map((name) => withPythonVerdict(toolFactories[name]()));
 
   // 轮次上限:Agent 无 setMaxTurns(实测 0.84.x),用 shouldStopAfterTurn 计数拦截;
   // 计数恒启用(done.numTurns 有意义),maxTurns>0 时才触发停轮。
@@ -153,8 +265,8 @@ async function main(task) {
     initialState: {
       systemPrompt:
         "You are the execution engine of an authorized security-testing pipeline. " +
-        "Answer with precise, structured output; every shell command you need must go " +
-        "through the Bash tool.",
+        "Answer with precise, structured output. Use Bash for shell commands and " +
+        "Read, Grep, or Glob for read-only filesystem inspection.",
       model: model ?? undefined,
       tools: agentTools,
     },

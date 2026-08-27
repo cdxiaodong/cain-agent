@@ -195,7 +195,7 @@ def test_pi_run_eof_returns_partial() -> None:
 
 
 def _scoped_executor(lines: list[dict[str, Any]]) -> tuple[PiExecutor, FakeProcess]:
-    ex, proc = make_executor(lines)
+    ex, proc = make_executor(lines, allowed_tools=["Bash"])
     ex.add_pre_tool_use_hook(
         ScopeGuardHook(Scope(in_scope=["example.com"], out_of_scope=[])), matcher="Bash"
     )
@@ -257,11 +257,46 @@ def test_pi_matcher_skips_non_matching_tool() -> None:
         {"type": "tool_request", "id": "t4", "name": "Read", "input": {"path": "/etc/passwd"}},
         {"type": "done", "text": "", "usage": None, "numTurns": 1, "error": None},
     ]
-    ex, proc = _scoped_executor(lines)  # hook matcher="Bash"
+    ex, proc = make_executor(lines, allowed_tools=["Read"])
+    ex.add_pre_tool_use_hook(
+        ScopeGuardHook(Scope(in_scope=["example.com"], out_of_scope=[])), matcher="Bash"
+    )
     run_sync(ex.run("p"))
     verdicts = [w for w in proc.stdin.written if w.get("type") == "verdict"]
     # Read 不匹配 matcher → 没有任何 hook 拒绝 → allow
     assert verdicts[0]["allow"] is True
+
+
+@pytest.mark.parametrize("tool_name", ["Read", "Grep", "Glob"])
+def test_pi_readonly_tools_run_through_python_verdict(tool_name: str) -> None:
+    lines = [
+        {"type": "tool_request", "id": "ro1", "name": tool_name, "input": {"path": "."}},
+        {"type": "done", "text": "", "usage": None, "numTurns": 1, "error": None},
+    ]
+    ex, proc = make_executor(lines, allowed_tools=[tool_name])
+    ex.add_pre_tool_use_hook(
+        ScopeGuardHook(Scope(in_scope=["example.com"], out_of_scope=[])),
+        matcher="Read|Grep|Glob",
+    )
+    run_sync(ex.run("p"))
+    assert {"type": "verdict", "id": "ro1", "allow": True} in proc.stdin.written
+
+
+def test_pi_tool_request_outside_allowed_tools_is_denied() -> None:
+    lines = [
+        {"type": "tool_request", "id": "t5", "name": "Read", "input": {"file_path": "x"}},
+        {"type": "done", "text": "", "usage": None, "numTurns": 1, "error": None},
+    ]
+    ex, proc = make_executor(lines, allowed_tools=["Bash"])
+    run_sync(ex.run("p"))
+    assert {"type": "verdict", "id": "t5", "allow": False} in proc.stdin.written
+
+
+def test_pi_bridge_registers_full_readonly_tool_surface() -> None:
+    source = BRIDGE.read_text(encoding="utf-8")
+    for tool_name in ("Bash", "Read", "Grep", "Glob"):
+        assert f'{tool_name}:' in source
+    assert ".map((name) => withPythonVerdict(toolFactories[name]()))" in source
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +368,7 @@ def test_cli_build_executor_selects_backend() -> None:
     assert isinstance(ex, PiExecutor)
     assert ex.provider == "openai"
     assert ex.model == "gpt-x"
-    assert ex.allowed_tools == ["Bash"]
+    assert ex.allowed_tools == ["Bash", "Read", "Grep", "Glob"]
 
     claude_args = parser.parse_args(["run", "--target", "example.com"])
     from cain_agent.executor import SDKExecutor

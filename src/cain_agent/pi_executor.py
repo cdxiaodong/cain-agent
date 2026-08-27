@@ -81,7 +81,8 @@ class PiExecutor:
         provider / model: 桥侧 LLM provider 与模型 id(多 provider 由桥的
             统一 LLM 层支持);``model=None`` 用 provider 默认模型。
         allowed_tools: 工具白名单;空列表 = 零工具只读通道(校验 Agent 用)。
-            目前桥内工具为 ``Bash``(与现有 hook matcher 大小写一致)。
+            桥内工具为 ``Bash`` / ``Read`` / ``Grep`` / ``Glob``，名称与
+            claude 后端白名单及 hook matcher 保持一致。
         idle_timeout / total_budget: 与 ``SDKExecutor`` 相同的双防线秒数。
         max_turns: 最大对话轮数(可选,透传桥)。
         node_bin: Node 解释器(默认 ``node``)。
@@ -162,6 +163,8 @@ class PiExecutor:
         self, tool_use_id: str, name: str, tool_input: dict[str, Any]
     ) -> bool:
         """跑全部匹配的 PreToolUse hook,任一 deny 即拒绝(deny 优先)."""
+        if name not in self.allowed_tools:
+            return False
         input_data = {"tool_name": name, "tool_input": tool_input}
         for callback, matcher in self._hooks:
             if not _matcher_hits(matcher, name):

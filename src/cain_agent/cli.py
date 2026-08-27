@@ -26,9 +26,8 @@ from cain_agent.workspace import SCOPE_FILE, Workspace
 
 __all__ = ["main", "build_parser", "is_local_target"]
 
-# Default tool whitelist: Bash only for Phase 1 (DESIGN §3.2: minimal surface).
-# Read/Write land later once ScopeGuard local-exemption is settled.
-DEFAULT_ALLOWED_TOOLS: list[str] = ["Bash"]
+# Discovery tools shared by both backends. Mutating tools remain unregistered.
+DEFAULT_ALLOWED_TOOLS: list[str] = ["Bash", "Read", "Grep", "Glob"]
 
 # Targets that don't need explicit authorization confirmation.
 _LOCAL_SUFFIXES = (".local", ".localhost")
