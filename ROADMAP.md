@@ -54,14 +54,19 @@
   (2026-08-27,provider 路由扩展+错误传播,含 openrouter/github-copilot)
 - [x] 工具面扩展:Read / Grep / Glob 注册 + 对应 scope / readonly 拦截
   (2026-08-27,判决回 Python,白名单对齐 claude 后端)
-- [ ] 技能加载适配:SkillLoader 三阶段技能在 pi 后端的 prompt 验证
-- [ ] 中心编排 + FindingsPipeline 双会话(发现≠校验)在 pi 后端实测
+- [x] 技能加载适配:SkillLoader 三阶段技能在 pi 后端的 prompt 验证
+  (2026-08-28,阶段化技能注入验证,提示词经桥生效)
+- [x] 中心编排 + FindingsPipeline 双会话(发现≠校验)在 pi 后端实测
+  (2026-08-28,多 Agent 编排经 pi 后端跑通,链路等价性验证;校验通道支持
+  独立 provider/model 配置)
 - [x] benchmark:claude vs pi 同场景对比(确认率 / 耗时 / token 成本)——
   双后端的价值证明(2026-08-27,bench-backends-2026-08-26.md)
-- [ ] README(中英)双后端文档 + 桥安装说明
-- [ ] CI:pi 协议测试稳定化;桥依赖版本锁定(package-lock)
+- [x] README(中英)双后端文档 + 桥安装说明(2026-08-28,后端配置文档与 CI 收口)
+- [x] CI:pi 协议测试稳定化;桥依赖版本锁定(package-lock)
+  (2026-08-28,桥依赖缓存入 CI)
 - [ ] 模型路由(深化):pipeline 级混搭 —— recon 用低成本模型、test 用
-  高能力模型,按阶段选 provider/model
+  高能力模型,按阶段选 provider/model(基础设施已就绪:校验通道独立
+  provider/model 配置,2026-08-28)
 
 ## Phase 3 · 扩能+传播(原计划 2027.01-04,核心条目已提前至 2026-08-10 完成)
 
