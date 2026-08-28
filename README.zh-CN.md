@@ -62,6 +62,31 @@ cain-agent run \
 
 **参数：** `--target`（必填）· `--workspace`（状态目录，默认 `./workspace`）· `--total-budget`（墙钟秒数）· `--idle-timeout`（单步秒数）
 
+### 选择执行后端
+
+Cain 默认使用 `claude` 后端；传入 `--backend pi` 即可切换到 pi 后端。pi 后端
+需要 Node.js 20 或更高版本，并需一次性安装桥依赖：
+
+```bash
+npm ci --prefix toolchain/pi
+export ANTHROPIC_API_KEY="your-api-key"
+cain-agent run --target https://app.example.com --backend pi
+```
+
+通过 `--pi-provider` 和 `--pi-model` 可指定其他受支持的 provider 与模型；同时
+需要设置对应的标准 API key 环境变量，例如 `OPENAI_API_KEY`、`GEMINI_API_KEY`、
+`DEEPSEEK_API_KEY` 或 `OPENROUTER_API_KEY`。使用兼容 Anthropic Messages 协议的
+网关时，设置 `PI_BASE_URL`，并通过 `ANTHROPIC_AUTH_TOKEN` 提供 Bearer 凭证：
+
+```bash
+export PI_BASE_URL="https://gateway.example.com"
+export ANTHROPIC_AUTH_TOKEN="your-gateway-token"
+cain-agent run --target https://app.example.com \
+  --backend pi --pi-model your-gateway-model-id
+```
+
+完整的 provider 与网关配置见 [pi 桥说明](toolchain/pi/README.md)。
+
 ---
 
 ## 架构

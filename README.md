@@ -62,6 +62,33 @@ cain-agent run \
 
 **Flags:** `--target` (required) · `--workspace` (state dir, default `./workspace`) · `--total-budget` (wall-clock seconds) · `--idle-timeout` (per-step seconds)
 
+### Choose an execution backend
+
+Cain uses the default `claude` backend unless `--backend pi` is specified. The
+pi backend requires Node.js 20 or newer and a one-time bridge installation:
+
+```bash
+npm ci --prefix toolchain/pi
+export ANTHROPIC_API_KEY="your-api-key"
+cain-agent run --target https://app.example.com --backend pi
+```
+
+Choose another supported provider and model with `--pi-provider` and
+`--pi-model`; its standard API-key environment variable must be set (for
+example, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, or
+`OPENROUTER_API_KEY`). For an Anthropic Messages-compatible gateway, set
+`PI_BASE_URL` and use `ANTHROPIC_AUTH_TOKEN` as its bearer credential:
+
+```bash
+export PI_BASE_URL="https://gateway.example.com"
+export ANTHROPIC_AUTH_TOKEN="your-gateway-token"
+cain-agent run --target https://app.example.com \
+  --backend pi --pi-model your-gateway-model-id
+```
+
+See [the pi bridge guide](toolchain/pi/README.md) for the complete provider and
+gateway configuration.
+
 ---
 
 ## Architecture
