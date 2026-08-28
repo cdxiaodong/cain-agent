@@ -430,7 +430,17 @@ def test_cli_validation_executor_uses_independent_config() -> None:
 def test_cli_validation_executor_defaults_mirror_discovery() -> None:
     parser = build_parser()
     args = parser.parse_args(
-        ["run", "--target", "example.com", "--backend", "pi", "--pi-provider", "openai", "--pi-model", "gpt-x"]
+        [
+            "run",
+            "--target",
+            "example.com",
+            "--backend",
+            "pi",
+            "--pi-provider",
+            "openai",
+            "--pi-model",
+            "gpt-x",
+        ]
     )
     validation = _build_validation_executor(args)
     assert validation.provider == "openai"
