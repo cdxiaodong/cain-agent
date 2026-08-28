@@ -292,6 +292,30 @@ def test_pi_tool_request_outside_allowed_tools_is_denied() -> None:
     assert {"type": "verdict", "id": "t5", "allow": False} in proc.stdin.written
 
 
+def test_pi_validation_session_contract_denies_any_tool_request() -> None:
+    """零工具校验通道的第二防线:即使桥侧异常注册了工具并回判,Python 白名单也全拒。"""
+    lines = [
+        {"type": "tool_request", "id": "v1", "name": "Bash", "input": {"command": "curl http://x/"}},
+        {"type": "tool_request", "id": "v2", "name": "Read", "input": {"file_path": "/etc/passwd"}},
+        {"type": "done", "text": "", "usage": None, "numTurns": 1, "error": None},
+    ]
+    ex, proc = make_executor(lines, allowed_tools=[])  # 与 CLI 校验 executor 同配置
+    result = run_sync(ex.run("p"))
+    verdicts = [w for w in proc.stdin.written if w.get("type") == "verdict"]
+    assert verdicts == [
+        {"type": "verdict", "id": "v1", "allow": False},
+        {"type": "verdict", "id": "v2", "allow": False},
+    ]
+    assert len(result.tool_calls) == 2  # 审计记录照常,拒绝不丢失轨迹
+
+
+def test_pi_bridge_registers_only_whitelisted_tool_names() -> None:
+    """桥侧第一防线源码断言:注册面严格来自 tools 列表与白名单工厂的交集。"""
+    source = BRIDGE.read_text(encoding="utf-8")
+    assert ".filter((name) => Object.hasOwn(toolFactories, name))" in source
+    assert "tools: agentTools" in source  # 空列表 → Agent 不注册任何工具
+
+
 def test_pi_bridge_registers_full_readonly_tool_surface() -> None:
     source = BRIDGE.read_text(encoding="utf-8")
     for tool_name in ("Bash", "Read", "Grep", "Glob"):
@@ -347,6 +371,71 @@ def test_cli_backend_flags_parse() -> None:
     assert default.backend == "claude"
     assert default.pi_provider == "anthropic"
     assert default.pi_model is None
+    assert default.pi_validation_provider is None
+    assert default.pi_validation_model is None
+
+
+def test_cli_validation_provider_flags_parse() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "run",
+            "--target",
+            "example.com",
+            "--backend",
+            "pi",
+            "--pi-provider",
+            "anthropic",
+            "--pi-model",
+            "glm-5.3",
+            "--pi-validation-provider",
+            "deepseek",
+            "--pi-validation-model",
+            "deepseek-chat",
+        ]
+    )
+    assert args.pi_validation_provider == "deepseek"
+    assert args.pi_validation_model == "deepseek-chat"
+
+
+def test_cli_validation_executor_uses_independent_config() -> None:
+    """校验通道可独立配置 provider/model,与发现通道不同;零工具语义不变。"""
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "run",
+            "--target",
+            "example.com",
+            "--backend",
+            "pi",
+            "--pi-provider",
+            "anthropic",
+            "--pi-model",
+            "glm-5.3",
+            "--pi-validation-provider",
+            "deepseek",
+            "--pi-validation-model",
+            "deepseek-chat",
+        ]
+    )
+    discovery = _build_executor(args)
+    validation = _build_validation_executor(args)
+    assert discovery.provider == "anthropic" and discovery.model == "glm-5.3"
+    assert validation.provider == "deepseek"
+    assert validation.model == "deepseek-chat"
+    assert validation.allowed_tools == []
+    assert validation is not discovery
+
+
+def test_cli_validation_executor_defaults_mirror_discovery() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        ["run", "--target", "example.com", "--backend", "pi", "--pi-provider", "openai", "--pi-model", "gpt-x"]
+    )
+    validation = _build_validation_executor(args)
+    assert validation.provider == "openai"
+    assert validation.model == "gpt-x"
+    assert validation.allowed_tools == []
 
 
 def test_cli_build_executor_selects_backend() -> None:
@@ -397,3 +486,29 @@ def test_cli_dry_run_prints_backend(capsys: Any) -> None:
     out = capsys.readouterr().out
     assert "后端:     pi" in out
     assert "deepseek/默认" in out
+
+
+def test_cli_dry_run_prints_validation_channel(capsys: Any) -> None:
+    """dry-run 显示校验通道配置;独立配置时与发现通道分别呈现。"""
+    from cain_agent.cli import cmd_run
+
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "run",
+            "--target",
+            "example.com",
+            "--backend",
+            "pi",
+            "--pi-model",
+            "glm-5.3",
+            "--pi-validation-model",
+            "glm-5.3-air",
+            "--dry-run",
+        ]
+    )
+    rc = cmd_run(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "pi provider/model: anthropic/glm-5.3" in out
+    assert "pi 校验通道:      anthropic/glm-5.3-air(零工具)" in out
