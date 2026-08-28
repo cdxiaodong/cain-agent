@@ -164,6 +164,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="model id for the pi backend (default: provider default)",
     )
+    run.add_argument(
+        "--pi-validation-provider",
+        default=None,
+        help="provider for the zero-tool validation session (default: same as "
+        "--pi-provider). Discovery and validation sessions may use different "
+        "providers/models; both keep the same scope semantics",
+    )
+    run.add_argument(
+        "--pi-validation-model",
+        default=None,
+        help="model id for the zero-tool validation session (default: same as "
+        "--pi-model)",
+    )
 
     return parser
 
@@ -204,13 +217,18 @@ def _build_validation_executor(args: argparse.Namespace) -> Any:
     「发现者≠校验者」约束在结构上成立;分开成函数也便于测试独立
     monkeypatch(零真实 Agent 启动)。两个后端同样保持零工具语义:
     pi 桥在不注册任何工具的情况下启动校验会话。
+
+    pi 后端下校验通道 provider/model 可与发现通道不同
+    (``--pi-validation-provider`` / ``--pi-validation-model``,缺省沿用
+    发现通道配置)——发现用高能力模型、校验用低成本模型的组合在配置面
+    即可表达,双会话语义不变。
     """
     if getattr(args, "backend", "claude") == "pi":
         from cain_agent.pi_executor import PiExecutor
 
         return PiExecutor(
-            provider=args.pi_provider,
-            model=args.pi_model,
+            provider=args.pi_validation_provider or args.pi_provider,
+            model=args.pi_validation_model or args.pi_model,
             allowed_tools=[],  # 只读校验通道:零工具
             idle_timeout=args.idle_timeout,
             total_budget=args.total_budget,
@@ -302,6 +320,12 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print(f"  工具白名单: {DEFAULT_ALLOWED_TOOLS}", file=stdout)
         if args.backend == "pi":
             print(f"  pi provider/model: {args.pi_provider}/{args.pi_model or '默认'}", file=stdout)
+            validation_provider = args.pi_validation_provider or args.pi_provider
+            validation_model = args.pi_validation_model or args.pi_model
+            print(
+                f"  pi 校验通道:      {validation_provider}/{validation_model or '默认'}(零工具)",
+                file=stdout,
+            )
         print("\n  (dry-run: 不启动 Agent)", file=stdout)
         return EXIT_OK
 
