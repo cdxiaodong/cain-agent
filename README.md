@@ -89,6 +89,40 @@ cain-agent run --target https://app.example.com \
 See [the pi bridge guide](toolchain/pi/README.md) for the complete provider and
 gateway configuration.
 
+### Per-stage model routing
+
+Reconnaissance is mostly repetitive enumeration, while the test stage needs a
+high-capability model for vulnerability judgment — the two discovery stages can
+each run their own engine and model:
+
+```bash
+# recon on the pi backend with a cheap gateway model, test keeps high-capability claude
+cain-agent run --target https://app.example.com \
+  --recon-backend pi --recon-provider anthropic --recon-model your-gateway-model-id \
+  --test-backend claude
+```
+
+Flags and fallback rules:
+
+- `--recon-backend` / `--test-backend`: per-stage engine override
+  (`claude` / `pi`), falling back to `--backend`;
+- `--recon-provider` / `--recon-model`, `--test-provider` / `--test-model`:
+  provider and model of that stage's pi channel, falling back to
+  `--pi-provider` / `--pi-model` respectively (ignored by the claude backend);
+- the report stage keeps its independent channel through the existing
+  `--pi-validation-provider` / `--pi-validation-model` (likewise falling back
+  to `--pi-provider` / `--pi-model`), so all three pipeline stages — recon /
+  test / report — can be routed separately.
+
+Behavioral guarantees:
+
+- **Zero default change**: with no `--recon-*` / `--test-*` flags at all, the
+  two stages share the same discovery session — behavior identical to
+  configuring `--backend` alone;
+- **No scope downgrade**: whatever the mix, every execution channel mounts the
+  same ScopeGuardHook — hard scope enforcement and the
+  finder≠validator dual-session semantics are fully preserved.
+
 ---
 
 ## Architecture
