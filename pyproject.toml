@@ -44,6 +44,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 include = ["src", "tests"]
+# bench/ 不在 include(不进检查面),但 tests 经 sys.path.insert 导入其中模块
+# (local_finding_fixture / run_benchmark 等);extraPaths 让静态解析与运行时一致。
+extraPaths = ["bench"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

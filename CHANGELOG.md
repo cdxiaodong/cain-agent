@@ -15,6 +15,31 @@ smoke coverage, classic-versus-orchestrated benchmark reporting, and a second `p
 execution backend that preserves ScopeGuardHook and tool-allowlist semantics. See
 `docs/release/v0.2.0.md`.
 
+## 2026-08-29 · 阶段模型路由收官:recon/test/report 按阶段混搭引擎与模型
+
+- **pipeline 级模型路由混搭**(`cli.py`):新增 `--recon-backend` /
+  `--test-backend`(choices claude/pi,缺省回落 `--backend`)与配套
+  `--recon-provider/--recon-model`、`--test-provider/--test-model`(缺省回落
+  `--pi-provider/--pi-model`,claude 后端忽略)——典型组合「recon 低成本
+  pi+网关模型、test 高能力 claude」一条命令即可表达;report 阶段经既有
+  `--pi-validation-provider/--pi-validation-model` 独立配置,recon/test/report
+  三阶段皆可分治路由(Phase 2.7 最后一项收官,9/9 全闭环)
+- **缺省行为零变化**:全部缺省时 recon/test 解析后配置相等,构造层共享
+  **同一个**发现 executor 对象(identity 断言钉死),既有 `_build_executor`
+  测试注入点原样保留;dry-run 展示面缺省零新增输出
+- **混搭不降级安全语义**:Orchestrator 只给它收到的 executor 挂
+  ScopeGuardHook,混搭下另一通道由 CLI 补挂同一套(pi 桥无 hook 时工具调用
+  默认放行,漏挂即失守);FindingsPipeline 防自证对照取 test 通道(findings
+  由 test 产出,发现者≠校验者不变);ScopeGuardHook 默认拒绝与工具白名单
+  语义零改动
+- **测试 +19 例**(`tests/test_model_routing.py`,零 token 零触网):配置
+  解析回退链 / 构造层共享 vs 各走各的 / 全流程按阶段分发与 scope 双挂载 /
+  CLI 参数面;含 local finding fixture 混搭冒烟——recon=pi(deepseek)、
+  test=claude、校验通道独立的三通道全流程,fixture 证据哈希经真实链路落盘,
+  并行验证池多数确认,聚合结论 confidence ≥ 0.85
+- **文档**:README(中英)「按阶段混搭模型路由」章节——示例、参数回退
+  规则、缺省零变化与 scope 拦截不降级约束
+
 ## 2026-08-24 · 双执行引擎:pi 后端接入
 
 - **pi 第二执行引擎**(`pi_executor.py` + `toolchain/pi/`):`cain-agent run

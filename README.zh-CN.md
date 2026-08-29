@@ -105,7 +105,10 @@ cain-agent run --target https://app.example.com \
   缺省回落 `--backend`；
 - `--recon-provider` / `--recon-model`、`--test-provider` / `--test-model`：
   单阶段 pi 通道的 provider 与模型，缺省分别回落 `--pi-provider` /
-  `--pi-model`（claude 后端忽略这两个参数）。
+  `--pi-model`（claude 后端忽略这两个参数）；
+- report 阶段经既有 `--pi-validation-provider` / `--pi-validation-model`
+  独立配置（缺省同样回落 `--pi-provider` / `--pi-model`），recon / test /
+  report 三阶段皆可分治路由。
 
 行为约束：
 

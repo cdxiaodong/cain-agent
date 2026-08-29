@@ -37,6 +37,14 @@ from cain_agent.cli import (
 from cain_agent.executor import ExecutorResult
 from cain_agent.pi_executor import PiExecutor
 
+sys.path.insert(0, str(Path(__file__).parent.parent / "bench"))
+from local_finding_fixture import (  # noqa: E402
+    OfflineValidationExecutor,
+    fixture_evidence,
+    load_fixture,
+    materialize_finding,
+)
+
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -423,3 +431,160 @@ class TestParserAndDryRun:
         assert code == 0
         assert "recon 后端" not in out
         assert "共享发现会话" not in out
+
+
+# ── 混搭冒烟:local finding fixture 离线闭环 ────────────────────────────────
+
+
+class _ScriptedExecutor:
+    """固定应答 executor 替身:``run`` 恒返回构造时给定文本,零网络零 token。
+
+    与 ``_RoutingFakeExecutor`` 同契约,差别在应答不按 prompt 角色现算,
+    而是回放构造方(bench fixture 冒烟)预制好的整段 JSON——test 阶段的
+    应答由 fixture 请求/响应对现场生成,evidence 走真实哈希链路。
+    """
+
+    def __init__(self, response_text: str, session_id: str) -> None:
+        self.session_id = session_id
+        self.response_text = response_text
+        self.prompts: list[str] = []
+        self.hooks: list[Any] = []
+
+    def add_pre_tool_use_hook(self, callback: Any, **kwargs: Any) -> None:
+        self.hooks.append(callback)
+
+    def build_options(self) -> dict[str, Any]:
+        return {"allowed_tools": ["Bash"]}
+
+    async def run(self, prompt: str) -> ExecutorResult:
+        self.prompts.append(prompt)
+        return ExecutorResult(text=self.response_text, session_id=self.session_id)
+
+
+class TestMixedRoutingFixtureSmoke:
+    """混搭路由全流程 × local finding fixture:三通道各走各的,闭环照常确认。
+
+    场景:``--backend pi``(全局 pi 高能力 anthropic/glm-5.3)下
+    ``--recon-provider deepseek``(recon 低成本)+ ``--test-backend claude``
+    (test 高能力)+ ``--pi-validation-provider deepseek``(report 校验通道
+    低成本)。发现通道用固定应答替身、校验通道用 fixture 的确定性
+    ``OfflineValidationExecutor``(按证据哈希判 confirmed),全程零 token
+    零触网;校验通道的路由解析由 ``test_cli_validation_executor_uses_
+    independent_config`` 单独钉死,此处不重复构造真实 PiExecutor。
+    """
+
+    def test_mixed_routing_smoke_closes_fixture_loop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        fixture = load_fixture()
+        finding = materialize_finding(fixture)
+
+        # recon 应答:fixture 端点草稿;test 应答:按 fixture 现场回放 finding,
+        # evidence 即规范化请求/响应对——与 materialize_finding 的哈希同源。
+        recon_response = json.dumps(
+            {
+                "endpoints": [
+                    {
+                        "url": fixture["request"]["url"],
+                        "method": "GET",
+                        "params": ["template"],
+                        "tech": "nginx",
+                        "notes": "模板渲染端点",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+        test_response = json.dumps(
+            {
+                "findings": [
+                    {
+                        "cloud": "web",
+                        "service": "http",
+                        "resource": fixture["request"]["url"],
+                        "issue_type": fixture["expected"]["issue_type"],
+                        "evidence": fixture_evidence(fixture),
+                        "reason": fixture["expected"]["finding_reason"],
+                        "suggested_severity": "high",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+        recon_fake = _ScriptedExecutor(recon_response, "smoke-recon-pi-deepseek")
+        test_fake = _ScriptedExecutor(test_response, "smoke-test-claude")
+        configs: list[StageBackendConfig] = []
+
+        def fake_stage_build(args: Any, config: StageBackendConfig) -> Any:
+            configs.append(config)
+            return recon_fake if config.backend == "pi" else test_fake
+
+        monkeypatch.setattr("cain_agent.cli._build_stage_executor", fake_stage_build)
+        validation = OfflineValidationExecutor(finding.evidence_hash)
+        monkeypatch.setattr("cain_agent.cli._build_validation_executor", lambda args: validation)
+
+        ws = tmp_path / "ws"
+        code, out, err = _run_cli_captured(
+            [
+                "run",
+                "--target",
+                "127.0.0.1",
+                "--workspace",
+                str(ws),
+                "--backend",
+                "pi",
+                "--pi-provider",
+                "anthropic",
+                "--pi-model",
+                "glm-5.3",
+                "--recon-provider",
+                "deepseek",
+                "--recon-model",
+                "deepseek-chat",
+                "--test-backend",
+                "claude",
+                "--pi-validation-provider",
+                "deepseek",
+                "--pi-validation-model",
+                "deepseek-chat",
+            ],
+            monkeypatch,
+            capsys,
+        )
+        assert code == 0, f"exit={code} stderr={err}"
+
+        # 路由解析:recon=pi(deepseek 低成本)/ test=claude(高能力),各构造一次。
+        assert configs == [
+            StageBackendConfig("pi", "deepseek", "deepseek-chat"),
+            StageBackendConfig("claude", "anthropic", "glm-5.3"),
+        ]
+        assert any("侦察 Agent" in p for p in recon_fake.prompts)
+        assert any("测试 Agent" in p for p in test_fake.prompts)
+        assert not any("测试 Agent" in p for p in recon_fake.prompts)
+
+        # scope 硬拦截双挂载:两通道都过同一套 ScopeGuardHook 判定。
+        assert len(test_fake.hooks) >= 1
+        assert len(recon_fake.hooks) >= 1
+
+        # fixture 闭环:发现按真实哈希链路落盘,校验池多数确认,聚合高置信。
+        findings = json.loads((ws / "findings.json").read_text(encoding="utf-8"))
+        assert len(findings) == 1
+        assert findings[0]["issue_type"] == "ssti"
+        assert findings[0]["resource"] == fixture["request"]["url"]
+        assert findings[0]["evidence_hash"] == finding.evidence_hash
+        assert findings[0]["result"] == "confirmed"
+
+        summary = json.loads((ws / "report" / "validation-summary.json").read_text(encoding="utf-8"))
+        assert summary["results"]["confirmed"] == 1
+
+        report = json.loads((ws / "report" / "aggregated-report.json").read_text(encoding="utf-8"))
+        assert report["summary"]["results"]["confirmed"] == 1
+        conclusion = report["conclusions"][0]
+        assert conclusion["consensus"] == "confirmed"
+        assert conclusion["confidence"] >= 0.85
+        sources = {item["source"] for item in conclusion["basis"]}
+        assert {"solver", "verification"} <= sources
+        assert validation.calls >= 3  # 并行验证池 3 session 都吃过哈希判确认
