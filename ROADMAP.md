@@ -64,9 +64,9 @@
 - [x] README(中英)双后端文档 + 桥安装说明(2026-08-28,后端配置文档与 CI 收口)
 - [x] CI:pi 协议测试稳定化;桥依赖版本锁定(package-lock)
   (2026-08-28,桥依赖缓存入 CI)
-- [ ] 模型路由(深化):pipeline 级混搭 —— recon 用低成本模型、test 用
-  高能力模型,按阶段选 provider/model(基础设施已就绪:校验通道独立
-  provider/model 配置,2026-08-28)
+- [x] 模型路由(深化):pipeline 级混搭 —— recon 用低成本模型、test 用
+  高能力模型,按阶段选 provider/model(2026-08-29 合入 6336d66:CLI 分阶段
+  backend/provider/model 路由,缺省行为零变化,18 项路由测试;Phase 2.7 9/9 全闭环)
 
 ## Phase 3 · 扩能+传播(原计划 2027.01-04,核心条目已提前至 2026-08-10 完成)
 
