@@ -11,6 +11,13 @@ call; credentials are never printed.
 Solver / 并行验证池 / 语义记忆组装成聚合报告。中心编排不可用时自动回退
 经典 Route A:report 走独立校验 session 的 FindingsPipeline 与占位报告。
 技能经仓库 SkillLoader 按阶段加载,缺失自动降级为无技能 prompt。
+
+阶段模型路由(pipeline 级混搭):``--recon-backend`` / ``--test-backend``
+可让侦察与测试两阶段各走各的执行引擎(典型组合:recon 低成本 pi+网关
+模型、test 高能力模型),配套 ``--recon-provider`` 等单阶段 provider/model
+参数;全部缺省时两阶段共享同一个发现 executor,与全局 ``--backend``
+行为零变化。混搭下每个执行通道都挂同一个 ScopeGuardHook,授权范围
+硬拦截不因路由降级。
 """
 
 from __future__ import annotations
@@ -18,13 +25,19 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 from cain_agent import __version__
 from cain_agent.orchestrator import Orchestrator, StageHandler
 from cain_agent.workspace import SCOPE_FILE, Workspace
 
-__all__ = ["main", "build_parser", "is_local_target"]
+__all__ = [
+    "main",
+    "build_parser",
+    "is_local_target",
+    "StageBackendConfig",
+]
 
 # Discovery tools shared by both backends. Mutating tools remain unregistered.
 DEFAULT_ALLOWED_TOOLS: list[str] = ["Bash", "Read", "Grep", "Glob"]
@@ -174,8 +187,43 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--pi-validation-model",
         default=None,
-        help="model id for the zero-tool validation session (default: same as "
-        "--pi-model)",
+        help="model id for the zero-tool validation session (default: same as --pi-model)",
+    )
+    run.add_argument(
+        "--recon-backend",
+        choices=("claude", "pi"),
+        default=None,
+        help="per-stage backend override for the recon stage (default: --backend). "
+        "Enables mixed routing: e.g. cheap pi+gateway model for recon while "
+        "test keeps the high-capability backend",
+    )
+    run.add_argument(
+        "--recon-provider",
+        default=None,
+        help="pi provider for the recon stage (default: --pi-provider; only "
+        "meaningful when the recon backend is pi)",
+    )
+    run.add_argument(
+        "--recon-model",
+        default=None,
+        help="model id for the recon stage pi backend (default: --pi-model)",
+    )
+    run.add_argument(
+        "--test-backend",
+        choices=("claude", "pi"),
+        default=None,
+        help="per-stage backend override for the test stage (default: --backend)",
+    )
+    run.add_argument(
+        "--test-provider",
+        default=None,
+        help="pi provider for the test stage (default: --pi-provider; only "
+        "meaningful when the test backend is pi)",
+    )
+    run.add_argument(
+        "--test-model",
+        default=None,
+        help="model id for the test stage pi backend (default: --pi-model)",
     )
 
     return parser
@@ -207,6 +255,114 @@ def _build_executor(args: argparse.Namespace) -> Any:
         idle_timeout=args.idle_timeout,
         total_budget=args.total_budget,
     )
+
+
+@dataclass(frozen=True)
+class StageBackendConfig:
+    """单个执行阶段生效的后端配置(混搭路由的解析结果)。
+
+    值语义:``backend`` 为 ``claude`` / ``pi``;``provider`` / ``model`` 仅
+    pi 后端消费(claude 后端忽略,保留在配置里仅为让"两阶段配置是否相同"
+    的比较完整)。frozen + eq 由 dataclass 自带,可直接比较/做字典键。
+    """
+
+    backend: str
+    provider: str
+    model: str | None
+
+
+def _stage_routing_overridden(args: argparse.Namespace) -> bool:
+    """True 表示任一 ``--recon-*/--test-*`` 路由参数被显式指定。"""
+    return any(
+        getattr(args, name, None)
+        for name in (
+            "recon_backend",
+            "recon_provider",
+            "recon_model",
+            "test_backend",
+            "test_provider",
+            "test_model",
+        )
+    )
+
+
+def _resolve_stage_config(args: argparse.Namespace, stage: str) -> StageBackendConfig:
+    """解析 *stage*(recon/test)阶段生效的后端配置。
+
+    回退链:``--<stage>-backend`` 未指定回落 ``--backend``;
+    ``--<stage>-provider`` / ``--<stage>-model`` 未指定回落
+    ``--pi-provider`` / ``--pi-model``。全部未指定时解析结果与全局配置
+    一致——缺省行为零变化的根基。
+    """
+    backend = getattr(args, f"{stage}_backend", None) or args.backend
+    provider = getattr(args, f"{stage}_provider", None) or args.pi_provider
+    model = getattr(args, f"{stage}_model", None) or args.pi_model
+    return StageBackendConfig(backend=backend, provider=provider, model=model)
+
+
+def _build_stage_executor(args: argparse.Namespace, config: StageBackendConfig) -> Any:
+    """按解析后的阶段配置构造发现通道 executor(与 ``_build_executor`` 同参语义)。"""
+    if config.backend == "pi":
+        from cain_agent.pi_executor import PiExecutor
+
+        return PiExecutor(
+            provider=config.provider,
+            model=config.model,
+            allowed_tools=DEFAULT_ALLOWED_TOOLS,
+            idle_timeout=args.idle_timeout,
+            total_budget=args.total_budget,
+        )
+    from cain_agent.executor import SDKExecutor
+
+    return SDKExecutor(
+        allowed_tools=DEFAULT_ALLOWED_TOOLS,
+        idle_timeout=args.idle_timeout,
+        total_budget=args.total_budget,
+    )
+
+
+def _build_stage_executors(args: argparse.Namespace) -> tuple[Any, Any]:
+    """构造 recon/test 两阶段的发现 executor,返回 ``(recon, test)``。
+
+    两阶段配置相同(含全部缺省的常见情形)时共享**同一个** executor 对象
+    ——与既有"recon/test 共享发现会话"的行为完全一致,零变化;配置不同
+    (任一 ``--recon-*/--test-*`` 覆盖生效)时各构造各的,互不相干。
+
+    共享路径二分:解析后配置仍等于全局 backend(典型缺省)走既有
+    ``_build_executor``,保留其测试注入点;显式指定但两阶段恰好相同
+    (如 ``--recon-backend pi --test-backend pi`` 而全局是 claude)则按
+    解析后的 pi 配置构造共享对象——两种情形都是单一会话,语义一致。
+    """
+    recon_config = _resolve_stage_config(args, "recon")
+    test_config = _resolve_stage_config(args, "test")
+    if recon_config == test_config:
+        if recon_config.backend == getattr(args, "backend", "claude"):
+            shared = _build_executor(args)
+        else:
+            shared = _build_stage_executor(args, recon_config)
+        return shared, shared
+    return (
+        _build_stage_executor(args, recon_config),
+        _build_stage_executor(args, test_config),
+    )
+
+
+def _mount_scope_guard(executor: Any, workspace: Workspace) -> None:
+    """给 executor 挂 ScopeGuardHook(与 Orchestrator 内部同款装配)。
+
+    Orchestrator 构造时只给它收到的那个 executor 挂 scope 硬拦截;混搭
+    路由下 recon/test 是两个 executor,不在 Orchestrator 里的那个在此
+    补挂——保证任何后端通道的工具调用都过同一套 scope 判定,无一绕过
+    (pi 桥无 hook 时工具调用默认放行,漏挂即失守,故此步不可省)。
+    """
+    from cain_agent.scope import ScopeGuardHook
+
+    scope_guard = ScopeGuardHook(workspace.scope)
+
+    async def _guard_callback(input_data: Any, tool_use_id: str | None, context: Any) -> Any:
+        return await scope_guard(input_data, tool_use_id, context)
+
+    executor.add_pre_tool_use_hook(_guard_callback)
 
 
 def _build_validation_executor(args: argparse.Namespace) -> Any:
@@ -250,16 +406,21 @@ def _build_orchestration(validation_executor: Any, workspace: Workspace) -> Any:
 
 
 def _build_handlers(
-    executor: Any,
+    recon_executor: Any,
+    test_executor: Any,
     validation_executor: Any,
     workspace: Workspace,
 ) -> dict[str, StageHandler]:
     """构造经典 Route A 的三阶段真实 handler,供 Orchestrator 注入。
 
-    - recon / test 共享「发现 executor」;report 优先驱动中心编排链路。
-    - 中心编排构造失败时回退经典 Route A,校验仍走独立 session。
+    - recon / test 各用各的发现 executor;缺省(无路由覆盖)时两者是同一
+      对象,与历史行为零变化;混搭时两阶段各走各的引擎与模型。
+    - report 优先驱动中心编排链路;中心编排构造失败时回退经典 Route A,
+      校验仍走独立 session。
     - 技能加载用仓库 SkillLoader + 默认 ``skills/`` 根(既有约定),阶段零技能
       命中自动降级为无技能 prompt,不炸。
+    - 防自证对照取 **test** executor:findings 由 test 阶段产出,「发现者
+      ≠校验者」以实际发现通道为对照方。
     - 独立函数便于测试逐件 monkeypatch / spy,零真实 Agent 启动。
     """
     from cain_agent.handlers import SkillLoader, make_recon_handler, make_test_handler
@@ -267,13 +428,13 @@ def _build_handlers(
     from cain_agent.pipeline import FindingsPipeline, make_report_handler
 
     skill_loader = SkillLoader()  # 仓库 skills/ 根,既有约定
-    recon_handler = make_recon_handler(executor, skill_loader)
-    test_handler = make_test_handler(executor, skill_loader)
+    recon_handler = make_recon_handler(recon_executor, skill_loader)
+    test_handler = make_test_handler(test_executor, skill_loader)
     try:
         orchestration = _build_orchestration(validation_executor, workspace)
         pipeline = FindingsPipeline(
             workspace,
-            discovery_executor=executor,
+            discovery_executor=test_executor,
             validation_executor=validation_executor,
             verification_pool=orchestration.verification_pool,
         )
@@ -281,7 +442,7 @@ def _build_handlers(
     except Exception:
         pipeline = FindingsPipeline(
             workspace,
-            discovery_executor=executor,
+            discovery_executor=test_executor,
             validation_executor=validation_executor,
         )
         report_handler = make_report_handler(pipeline)
@@ -326,12 +487,26 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
                 f"  pi 校验通道:      {validation_provider}/{validation_model or '默认'}(零工具)",
                 file=stdout,
             )
+        if _stage_routing_overridden(args):
+
+            def _describe(config: StageBackendConfig) -> str:
+                if config.backend == "pi":
+                    return f"pi({config.provider}/{config.model or '默认'})"
+                return "claude"
+
+            recon_config = _resolve_stage_config(args, "recon")
+            test_config = _resolve_stage_config(args, "test")
+            print(f"  recon 后端: {_describe(recon_config)}", file=stdout)
+            print(f"  test 后端:  {_describe(test_config)}", file=stdout)
+            sharing = "是" if recon_config == test_config else "否(两阶段各走各的 executor)"
+            print(f"  共享发现会话: {sharing}", file=stdout)
         print("\n  (dry-run: 不启动 Agent)", file=stdout)
         return EXIT_OK
 
     # Build executors, real handlers, then run the orchestrator pipeline.
+    # 混搭路由:recon/test 可各走各的引擎;全部缺省时共享同一发现 executor。
     try:
-        executor = _build_executor(args)
+        recon_executor, test_executor = _build_stage_executors(args)
     except Exception as exc:
         print(f"错误: executor 构造失败: {exc}", file=sys.stderr)
         return EXIT_ARG_ERROR
@@ -343,17 +518,26 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         return EXIT_ARG_ERROR
 
     try:
-        handlers = _build_handlers(executor, validation_executor, workspace)
+        handlers = _build_handlers(recon_executor, test_executor, validation_executor, workspace)
     except Exception as exc:
         print(f"错误: handler 构造失败: {exc}", file=sys.stderr)
         return EXIT_ARG_ERROR
 
     # 构造与执行分开兜底:构造失败在 orchestrator 赋值前返回,绝不引用未绑定局部变量。
+    # 主 executor 取 test 通道(高能力发现主力,findings 由此产出);
+    # recon 通道不在 Orchestrator 里,单独补挂同一个 ScopeGuardHook。
     try:
-        orchestrator = Orchestrator(executor, workspace, handlers=handlers)
+        orchestrator = Orchestrator(test_executor, workspace, handlers=handlers)
     except Exception as exc:
         print(f"错误: orchestrator 构造失败: {exc}", file=sys.stderr)
         return EXIT_ARG_ERROR
+
+    if recon_executor is not test_executor:
+        try:
+            _mount_scope_guard(recon_executor, workspace)
+        except Exception as exc:
+            print(f"错误: recon 通道 scope 拦截挂载失败: {exc}", file=sys.stderr)
+            return EXIT_ARG_ERROR
 
     try:
         final_state = orchestrator.run()

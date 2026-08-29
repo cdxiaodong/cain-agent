@@ -87,6 +87,33 @@ cain-agent run --target https://app.example.com \
 
 完整的 provider 与网关配置见 [pi 桥说明](toolchain/pi/README.md)。
 
+### 按阶段混搭模型路由
+
+侦察阶段跑的是大量重复性枚举，测试阶段才需要高能力模型做漏洞判断——
+可以让两个执行阶段各走各的引擎与模型：
+
+```bash
+# recon 走 pi + 网关低成本模型，test 保持高能力 claude 后端
+cain-agent run --target https://app.example.com \
+  --recon-backend pi --recon-provider anthropic --recon-model your-gateway-model-id \
+  --test-backend claude
+```
+
+参数与回退规则：
+
+- `--recon-backend` / `--test-backend`：单阶段引擎覆盖（`claude` / `pi`），
+  缺省回落 `--backend`；
+- `--recon-provider` / `--recon-model`、`--test-provider` / `--test-model`：
+  单阶段 pi 通道的 provider 与模型，缺省分别回落 `--pi-provider` /
+  `--pi-model`（claude 后端忽略这两个参数）。
+
+行为约束：
+
+- **缺省零变化**：不传任何 `--recon-*` / `--test-*` 参数时，两阶段共享
+  同一个执行会话，与只配 `--backend` 的历史行为完全一致；
+- **scope 拦截不降级**：无论怎么混搭，每个执行通道都挂同一个
+  ScopeGuardHook，授权范围硬拦截、发现≠校验双会话语义全部保持。
+
 ---
 
 ## 架构
