@@ -76,7 +76,8 @@
 - [x] 云模块扩 AWS / 腾讯云 / Azure / 华为云 / GCP(2026-08-10,七大云厂商全覆盖;含腾讯云 CAM 提权检测)
 - [x] IAM/RAM 提权路径图可视化(2026-08-12 iam-graph 分支交付:有向图建模+BFS 提权路径+DOT 导出,已合入 main;ROADMAP 08-22 补记勾选)
 - [x] 2-3 篇技术文章(2026-08-10,多 Agent 团队完成「首个懂国产云」「校验闭环设计」「Benchmark 体系」三篇)
-- [ ] Gitee 同步 + 社区运营
+- [x] Gitee 同步(2026-08-30 合入 bf13143:scripts/gitee_sync.sh 镜像推送,GITEE_TOKEN 环境变量零硬编码+dry-run,README「国内镜像」节,真推留用户首推)
+- [ ] 社区运营
 
 ## Phase 4 · 达标冲刺(2027.05-07)
 
