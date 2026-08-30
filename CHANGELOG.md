@@ -21,6 +21,20 @@
 - **文档**:README(中英)「输出产物」一节——report/ 目录三件产物与
   report.md 结构说明
 
+## 2026-08-30 · Gitee 镜像同步脚本(重派交付)
+
+- **`scripts/gitee_sync.sh`**:把仓库 mirror push 到 Gitee——凭证只走
+  `GITEE_TOKEN` 环境变量(经 Git credential helper 注入,零硬编码,令牌
+  不进命令行参数/脚本输出/仓库),`--dry-run` 校验配置并打印脱敏后的
+  `git push --mirror` 命令而不执行、不触网;来源 remote/ref、目标
+  owner/repo/host 均可参数化,token/主机/属主/仓库名校验齐全
+- **README.zh-CN.md「国内镜像」一节**:使用说明 + 首推由用户手动执行的
+  提示(真推留用户首推,脚本默认不推)
+- **测试 +5 例**(`tests/test_gitee_sync.py`,临时 git 仓库驱动,零网络):
+  dry-run 配置校验与命令构造、来源 remote 缺失拒绝、GITEE_TOKEN 缺失拒绝、
+  令牌不外泄静态断言、脚本可执行位
+- 基线说明:分支基于 08-30 最新 main(1906175)平移交付,合并零冲突
+
 ## v0.2.0 · 编排验证闭环与双执行引擎
 
 **中文摘要：** Cain 从单会话流水线升级为可回退的中心编排系统：Manager 聚合、

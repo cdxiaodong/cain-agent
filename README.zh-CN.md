@@ -202,6 +202,21 @@ k8s_rbac · docker_image                                                 →  �
 - **Benchmark 执行器**（`bench/run_benchmark.py`）按四指标跑分：检出率、误报率、墙钟耗时、token 成本——不编造百分比，未测结果明确标注「未测量」。
 - **44 个测试文件**，覆盖云模块、技能、流水线与 CLI。
 
+## 国内镜像
+
+`main` 分支可通过 [`scripts/gitee_sync.sh`](scripts/gitee_sync.sh) 镜像到 Gitee。同步前请先在 Gitee 创建一个专用空仓库；首次真实推送建议由用户手动执行，确认目标仓库与覆盖行为无误后再进入日常同步。
+
+```bash
+export GITEE_TOKEN='你的 Gitee 访问令牌'
+export GITEE_OWNER='Gitee 用户名或组织名'
+export GITEE_REPO='cain-agent'
+
+scripts/gitee_sync.sh --dry-run
+scripts/gitee_sync.sh
+```
+
+脚本默认校验 `origin/main` 与 Gitee 目标配置，dry-run 只输出脱敏后的 `git push --mirror` 命令，不会访问网络；真实推送通过 Git credential helper 读取 `GITEE_TOKEN`，令牌不写入仓库、命令行参数或脚本输出。`--mirror` 会同步本地引用并清理远端多余引用，请确保 Gitee 仓库仅作为镜像使用。
+
 ---
 
 ## ⚠️ 合规与伦理使用
