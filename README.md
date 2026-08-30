@@ -123,6 +123,24 @@ Behavioral guarantees:
   same ScopeGuardHook — hard scope enforcement and the
   finder≠validator dual-session semantics are fully preserved.
 
+## Output Artifacts
+
+When a `run` finishes, the workspace `report/` directory holds three artifacts:
+
+- **`report.md`** — the human-readable report: an executive summary (target /
+  authorized scope / per-stage timings / finding counts), a findings table with
+  severity markers, confidence, and evidence-chain digests, per-finding details,
+  an evidence-hash index (evidence plaintext is never persisted — hashes only),
+  per-issue-type remediation advice, and a legal disclaimer;
+- **`aggregated-report.json`** — the machine-readable aggregate
+  (schema_version 1), same source data as `report.md` for downstream systems;
+- **`validation-summary.json`** — the validation-pipeline summary (four-state
+  counts and failure details).
+
+`report.md` is rendered by a pure-Python template (zero new dependencies) —
+same aggregate data in, same report out; see
+`src/cain_agent/report_markdown.py`.
+
 ---
 
 ## Architecture

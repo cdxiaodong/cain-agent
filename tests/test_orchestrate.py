@@ -105,6 +105,13 @@ def test_report_aggregates_manager_solver_pool_and_memory(tmp_path: Path) -> Non
     assert report["manager"]["aggregate_count"] == 1
     assert report["manager"]["blackboard"]["confirmed"] == 1
     assert (ws.root / MARKDOWN_REPORT_FILE).exists()
+    markdown = (ws.root / MARKDOWN_REPORT_FILE).read_text(encoding="utf-8")
+    assert "## 执行摘要" in markdown
+    assert "example.com" in markdown, "授权范围应进执行摘要"
+    assert "| recon |" in markdown and "| test |" in markdown, "阶段耗时表应含此前阶段"
+    assert "## Findings 一览" in markdown and "⚪ **INFO**" in markdown
+    assert conclusion["evidence_hash"] in markdown, "证据哈希应可引用"
+    assert "## 修复建议" in markdown and "## 法律声明" in markdown
     assert not (ws.root / "report" / "report-placeholder.json").exists()
     assert state["history"][-1]["artifacts"] == [
         "report/validation-summary.json",

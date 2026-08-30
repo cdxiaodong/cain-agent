@@ -117,9 +117,23 @@ cain-agent run --target https://app.example.com \
 - **scope 拦截不降级**：无论怎么混搭，每个执行通道都挂同一个
   ScopeGuardHook，授权范围硬拦截、发现≠校验双会话语义全部保持。
 
+## 输出产物
+
+一次 `run` 结束后,工作区 `report/` 目录落三件产物:
+
+- **`report.md`** —— 人类可读报告:执行摘要(目标/授权范围/阶段耗时/发现统计)、
+  findings 表(severity 着色标记 + 置信度 + 依据链摘要)、逐条发现详情、
+  证据哈希索引(证据原文只哈希不落明文)、按问题类型的修复建议、法律声明;
+- **`aggregated-report.json`** —— 机器可读版聚合报告(schema_version 1),
+  与 `report.md` 同源,供下游系统消费;
+- **`validation-summary.json`** —— 校验流水线汇总(四状态计数与失败明细)。
+
+`report.md` 由纯 Python 模板渲染(零新依赖),同一聚合数据恒定输出,
+渲染逻辑见 `src/cain_agent/report_markdown.py`。
+
 ---
 
-## 架构
+
 
 > **用确定性工程约束 Agent 的自由度**——阶段流转、scope 校验、危险操作熔断是硬工程约束；
 > 路径选择与证据分析交给 Agent。
