@@ -1,5 +1,26 @@
 # CHANGELOG — cain-agent
 
+## 2026-08-30 · 人类可读报告生成器:report.md 全结构渲染
+
+- **report.md 人类可读报告**(`report_markdown.py`):report 阶段在
+  `aggregated-report.json` 之外产出全结构 `report.md`——执行摘要(目标/
+  授权范围/阶段耗时表/发现统计)、findings 表(severity emoji 着色标记 +
+  置信度 + 依据链摘要)、逐条发现详情、证据哈希索引(原文只哈希不落明文)、
+  按问题类型的修复建议、法律声明尾部;复用 ManagerConclusion 聚合链路,
+  纯 Python 字符串模板零新依赖,替换原简版 markdown 渲染
+- **修复建议常量表**(`REMEDIATION_ADVICE`):覆盖定级规则表五类云场景 +
+  skills/web 十三类问题类型,未知 issue_type 回落按 severity 的通用建议
+  ——与定级规则表同思路,代码常量、模型不可绕过
+- **执行元数据容错采集**(`collect_execution_meta`):scope.yaml / state.json
+  缺失或损坏一律降级为占位说明,报告阶段不因元数据缺失失败;表格单元格
+  转义防注入破坏表格结构
+- **测试 +17 例**(`tests/test_report_markdown.py`,零 token 零触网):空 /
+  单条 / 多 severity 三态、同级按置信度降序、未知定级回落中性标记、证据
+  原文不出现断言、元数据采集三态、确定性渲染;`test_orchestrate.py` 端到端
+  断言 report.md 含执行摘要/阶段耗时/授权范围/法律声明
+- **文档**:README(中英)「输出产物」一节——report/ 目录三件产物与
+  report.md 结构说明
+
 ## v0.2.0 · 编排验证闭环与双执行引擎
 
 **中文摘要：** Cain 从单会话流水线升级为可回退的中心编排系统：Manager 聚合、

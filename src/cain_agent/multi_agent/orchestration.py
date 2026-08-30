@@ -46,6 +46,7 @@ from cain_agent.pipeline import (
     VALIDATION_SUMMARY_FILE,
     FindingsPipeline,
 )
+from cain_agent.report_markdown import collect_execution_meta, render_report_markdown
 
 __all__ = [
     "AGGREGATED_REPORT_FILE",
@@ -332,38 +333,6 @@ def _atomic_write(path: Path, content: str) -> None:
         raise
 
 
-def _markdown_text(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("\r", " ").replace("\n", " ").replace("|", "\\|")
-
-
-def _markdown(report: dict[str, Any]) -> str:
-    lines = [
-        "# Cain 聚合报告",
-        "",
-        f"- 路线: {report['route']}",
-        f"- 发现总数: {report['summary']['total']}",
-        "",
-        "## 结论",
-        "",
-    ]
-    for conclusion in report["conclusions"]:
-        lines.append(
-            f"### [{conclusion['severity'].upper()}] "
-            f"{_markdown_text(conclusion['issue_type'])} — {conclusion['result']}"
-        )
-        lines.append(f"- 资源: `{_markdown_text(conclusion['resource'])}`")
-        lines.append(f"- 置信度: {conclusion['confidence']:.1%}")
-        lines.append("- 依据链:")
-        for basis in conclusion["basis"]:
-            source = basis["source"]
-            status = basis.get("status", "used")
-            lines.append(f"  1. {source} ({status})")
-        lines.append("")
-    manager_json = json.dumps(report["manager"], ensure_ascii=False, indent=2)
-    lines.extend(["## Manager", "", "```json", manager_json, "```", ""])
-    return "\n".join(lines)
-
-
 def make_multi_agent_report_handler(
     pipeline: FindingsPipeline,
     orchestration: MultiAgentOrchestration,
@@ -418,7 +387,8 @@ def make_multi_agent_report_handler(
             report_path,
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         )
-        _atomic_write(markdown_path, _markdown(report))
+        meta = collect_execution_meta(ctx.workspace)
+        _atomic_write(markdown_path, render_report_markdown(report, meta))
         artifacts = [
             VALIDATION_SUMMARY_FILE,
             AGGREGATED_REPORT_FILE,
