@@ -292,7 +292,19 @@ def run_xbow_benchmark(output_path: Path) -> BenchmarkResult:
 
 
 def run_vuln_tf_benchmark(output_path: Path) -> BenchmarkResult:
-    result = BenchmarkResult("vuln-tf", 0, 0, 0, 0, 0.0, 0)
+    """三场景离线静态跑分(见 ``bench/vuln_tf_static.py``)。
+
+    token 恒为 0:纯静态文本分析,无 LLM 调用(如实统计,不模拟)。
+    """
+    from bench.vuln_tf_static import run_all
+
+    results = run_all()
+    total = len(results)
+    tp = sum(len(r.detections) for r in results)
+    fp = sum(len(r.false_positives) for r in results)
+    fn = sum(len(r.expected_missing) for r in results)
+    avg = sum(r.elapsed_s for r in results) / total if total else 0.0
+    result = BenchmarkResult("vuln-tf", total, tp, fp, fn, round(avg, 6), 0)
     generate_report(result, output_path)
     return result
 
