@@ -28,7 +28,7 @@
 - [x] 校验 Agent 分离 + 4 状态结构化输出(2026-08-06,FindingValidator 执行层合入,独立 session 防自证)
 - [x] 指纹去重 + 定级规则表(2026-08-05,findings.py 合入)
 - [x] 云模块:RAM 提权路径分析(2026-08-06,aliyun_ram.py 合入)
-- [ ] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark(场景一 OSS 公开桶已就位,待扩场景+首轮跑分)
+- [x] 自建阿里云 vulnerable-terraform 靶场 + 首轮 benchmark(三场景:OSS 公开桶/RAM 过度授权/RAM 管理员;2026-08-31 首轮离线跑分 检出8/误报0/漏报0,1049 绿,报告 docs/release/bench-vulntf-2026-08-31.md;**Phase 2 全部收官**)
 - [x] 第一篇传播文章("首个懂国产云的实战 AI 渗透 Agent")(2026-08-10,初稿定稿 + 七厂商/OWASP Top10 更新)
 
 ## Phase 2.5 · 中心编排器(2026-08-15 至 08-19,多 Agent 团队提前交付)
