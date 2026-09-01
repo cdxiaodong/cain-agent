@@ -1,5 +1,7 @@
 # Cain — Real-world AI Penetration Testing Engineer
 
+[![CI](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml)
+
 **Cain** is an AI penetration-testing engineer built for **real-world authorized security assessments** — not a CTF toy. It walks a deterministic attack pipeline, enforces scope with engineering constraints (not AI self-discipline), and ships a **cloud penetration module** covering AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 — including the Chinese clouds nobody else covers.
 
 > 🚧 Actively developed. Star & watch for updates.

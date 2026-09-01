@@ -1,5 +1,7 @@
 # Cain — 实战型 AI 渗透测试工程师
 
+[![CI](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml)
+
 > ⚠️ **法律与合规声明(请先读)**
 >
 > Cain 仅用于**已获授权**的安全测试——你自己的环境，或持有书面授权的测试项目。
