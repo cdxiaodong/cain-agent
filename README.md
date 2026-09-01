@@ -212,6 +212,20 @@ cloud metadata SSRF (IMDS / 169.254.169.254 across 7 providers)
 - **Benchmark executor** (`bench/run_benchmark.py`) scores each scene against four metrics: detection rate, false-positive rate, wall time, token cost — no hallucinated percentages; untested results are marked **untested**.
 - **44 test files** covering the cloud modules, skills, pipeline and CLI.
 
+### Measured results
+
+**vuln-tf static sweep** (offline, zero credentials — [full report](docs/release/bench-vulntf-2026-08-31.md)):
+
+| Scene | Expected | Detected | False positives | Missed |
+|---|---|---|---|---|
+| OSS public bucket (`public-read`) | 1 | 1 | 0 | 0 |
+| RAM over-granted policy | 2 | 2 | 0 | 0 |
+| RAM AdministratorAccess user | 5 | 5 | 0 | 0 |
+
+Clean controls (private bucket, read-only user) stay at zero hits.
+
+**Dual-backend sweep** (same scenes via `claude` and `pi` execution engines — [full report](docs/release/bench-backends-2026-08-26.md)): both backends complete the orchestrated pipeline with identical scope-enforcement semantics; per-backend timing and token numbers are in the report.
+
 ---
 
 ## ⚠️ Legal & Ethical Use

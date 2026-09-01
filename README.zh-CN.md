@@ -202,6 +202,20 @@ k8s_rbac · docker_image                                                 →  �
 - **Benchmark 执行器**（`bench/run_benchmark.py`）按四指标跑分：检出率、误报率、墙钟耗时、token 成本——不编造百分比，未测结果明确标注「未测量」。
 - **44 个测试文件**，覆盖云模块、技能、流水线与 CLI。
 
+### 实测数据
+
+**vuln-tf 静态跑分**（离线、零凭证零触网——[完整报告](docs/release/bench-vulntf-2026-08-31.md)）：
+
+| 场景 | 预期 | 检出 | 误报 | 漏报 |
+|---|---|---|---|---|
+| OSS 公开桶（public-read） | 1 | 1 | 0 | 0 |
+| RAM 过度授权策略 | 2 | 2 | 0 | 0 |
+| RAM AdministratorAccess 用户 | 5 | 5 | 0 | 0 |
+
+对照实体（private 桶、只读用户）零命中。
+
+**双后端跑分**（同一场景经 claude 与 pi 双执行引擎——[完整报告](docs/release/bench-backends-2026-08-26.md)）：两后端均完整走通编排流水线且 scope 强制语义一致；各后端的耗时与 token 数字见报告。
+
 ## 国内镜像
 
 `main` 分支可通过 [`scripts/gitee_sync.sh`](scripts/gitee_sync.sh) 镜像到 Gitee。同步前请先在 Gitee 创建一个专用空仓库；首次真实推送建议由用户手动执行，确认目标仓库与覆盖行为无误后再进入日常同步。
