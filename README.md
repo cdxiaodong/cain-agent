@@ -1,5 +1,7 @@
 # Cain — Real-world AI Penetration Testing Engineer
 
+[![CI](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/cdxiaodong/cain-agent/actions/workflows/ci.yml)
+
 **Cain** is an AI penetration-testing engineer built for **real-world authorized security assessments** — not a CTF toy. It walks a deterministic attack pipeline, enforces scope with engineering constraints (not AI self-discipline), and ships a **cloud penetration module** covering AWS / Azure / GCP / 阿里云 / 腾讯云 / 华为云 — including the Chinese clouds nobody else covers.
 
 > 🚧 Actively developed. Star & watch for updates.
@@ -211,6 +213,20 @@ cloud metadata SSRF (IMDS / 169.254.169.254 across 7 providers)
 - **Self-built vulnerable-terraform range** (`bench/aliyun-vuln-tf/`) with per-scene expected-detection fixtures.
 - **Benchmark executor** (`bench/run_benchmark.py`) scores each scene against four metrics: detection rate, false-positive rate, wall time, token cost — no hallucinated percentages; untested results are marked **untested**.
 - **44 test files** covering the cloud modules, skills, pipeline and CLI.
+
+### Measured results
+
+**vuln-tf static sweep** (offline, zero credentials — [full report](docs/release/bench-vulntf-2026-08-31.md)):
+
+| Scene | Expected | Detected | False positives | Missed |
+|---|---|---|---|---|
+| OSS public bucket (`public-read`) | 1 | 1 | 0 | 0 |
+| RAM over-granted policy | 2 | 2 | 0 | 0 |
+| RAM AdministratorAccess user | 5 | 5 | 0 | 0 |
+
+Clean controls (private bucket, read-only user) stay at zero hits.
+
+**Dual-backend sweep** (same scenes via `claude` and `pi` execution engines — [full report](docs/release/bench-backends-2026-08-26.md)): both backends complete the orchestrated pipeline with identical scope-enforcement semantics; per-backend timing and token numbers are in the report.
 
 ---
 
