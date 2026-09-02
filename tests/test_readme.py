@@ -11,6 +11,22 @@ def test_features_section():
     assert "## Features" in content
 
 
+def test_core_sections_present():
+    """结构性断言:重构后的 README 章节骨架齐整(吸收社区 PR #2 思路)。"""
+    content = Path("README.md").read_text(encoding="utf-8")
+    for section in (
+        "## Why Cain",
+        "## Quick Start",
+        "## Architecture",
+        "## Cloud Module",
+        "## Benchmark",
+        "## Legal & Ethical Use",
+        "## Status",
+        "## License",
+    ):
+        assert section in content, f"missing section: {section}"
+
+
 def test_cloud_coverage():
     content = Path("README.md").read_text(encoding="utf-8")
     clouds = ["AWS", "Azure", "GCP", "阿里云", "腾讯云", "华为云"]
