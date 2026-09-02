@@ -151,6 +151,10 @@ _VALUE_FLAGS: dict[str, set[str]] = {
 
 # Tool-input fields that carry an explicit target for non-Bash tools.
 _NON_BASH_TARGET_FIELDS = ("url", "host", "ip", "endpoint", "domain", "address")
+# Read-only tools whose inputs are local files/patterns — no network target
+# semantics, so a no-target call is allowed (mirrors the Bash local-program
+# allowlist; anything else falls through to default-deny).
+_READONLY_TOOL_NAMES = frozenset({"read", "grep", "glob", "list_dir", "search"})
 
 
 class ScopeConfigError(ValueError):
@@ -603,7 +607,13 @@ class ScopeGuardHook:
         for target in targets:
             if not self.scope.is_allowed(target):
                 return self._deny(f"目标不在授权范围内: {target}")
-        return {}
+        if targets:
+            return {}
+        if tool_name.lower() in _READONLY_TOOL_NAMES:
+            return {}  # read-only local tool — no network reach
+        return self._deny(
+            "非 Bash 工具调用不含可识别的目标字段（默认拒绝；仅只读工具豁免）"
+        )
 
     @staticmethod
     def _deny(reason: str) -> dict[str, Any]:

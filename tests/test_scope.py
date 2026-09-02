@@ -367,10 +367,29 @@ def test_hook_bash_extraction_failure_blocks() -> None:
         assert isinstance(reason, str) and reason
 
 
-def test_hook_non_bash_without_target_passes_through() -> None:
+def test_hook_non_bash_without_target_readonly_allowed_unknown_denied() -> None:
     scope = Scope(in_scope=["example.com"], out_of_scope=[])
-    decision = _hook_decision(scope, "Read", {"file_path": "/etc/passwd"})
-    assert decision == {}
+    # 只读工具(file/pattern 输入,无网络目标语义)放行
+    for tool in ("Read", "Grep", "Glob"):
+        decision = _hook_decision(scope, tool, {"file_path": "/etc/passwd"})
+        assert decision == {}
+    # 未知非 Bash 工具且无可识别目标字段 → 默认拒绝(对齐 Bash deny-default)
+    decision = _hook_decision(scope, "WebFetch", {"thing": "mystery"})
+    assert isinstance(decision, dict) and decision, "deny decision must be non-empty"
+    specific = decision.get("hookSpecificOutput")
+    assert isinstance(specific, dict)
+    assert specific.get("permissionDecision") == "deny"
+
+
+def test_hook_non_bash_with_target_still_scope_checked() -> None:
+    scope = Scope(in_scope=["example.com"], out_of_scope=[])
+    ok = _hook_decision(scope, "CustomHttp", {"url": "https://example.com/a"})
+    assert ok == {}
+    denied = _hook_decision(scope, "CustomHttp", {"url": "https://evil.com/a"})
+    assert isinstance(denied, dict) and denied, "deny decision must be non-empty"
+    specific = denied.get("hookSpecificOutput")
+    assert isinstance(specific, dict)
+    assert specific.get("permissionDecision") == "deny"
 
 
 def test_hook_allows_in_scope_bash() -> None:
