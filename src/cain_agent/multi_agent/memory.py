@@ -27,6 +27,7 @@ class EmbeddingProvider(Protocol):
 
     def embed(self, text: str) -> Sequence[float]:
         """Return one fixed-dimension vector for ``text``."""
+        ...  # pragma: no cover - protocol
 
 
 class MemoryKind(StrEnum):

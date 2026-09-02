@@ -41,9 +41,9 @@ def test_check_public_buckets_with_public(monkeypatch):
     checker = GcsExposureChecker()
     
     # Mock 方法
-    checker._list_buckets = lambda: ["public-bucket", "private-bucket"]
-    checker._is_bucket_public = lambda b: b == "public-bucket"
-    checker._check_sensitive_files = lambda b: []
+    checker._list_buckets = lambda: ["public-bucket", "private-bucket"]  # type: ignore[method-assign]
+    checker._is_bucket_public = lambda b: b == "public-bucket"  # type: ignore[method-assign]
+    checker._check_sensitive_files = lambda b: []  # type: ignore[method-assign]
     
     findings = checker.check_public_buckets()
     assert len(findings) == 1
@@ -59,9 +59,9 @@ def test_check_sensitive_files(monkeypatch):
     monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/fake/path.json")
     checker = GcsExposureChecker()
     
-    checker._list_buckets = lambda: ["test-bucket"]
-    checker._is_bucket_public = lambda b: True
-    checker._check_sensitive_files = lambda b: [".env", "credentials.json"]
+    checker._list_buckets = lambda: ["test-bucket"]  # type: ignore[method-assign]
+    checker._is_bucket_public = lambda b: True  # type: ignore[method-assign]
+    checker._check_sensitive_files = lambda b: [".env", "credentials.json"]  # type: ignore[method-assign]
     
     findings = checker.check_public_buckets()
     assert len(findings) == 2  # public-bucket + sensitive-files

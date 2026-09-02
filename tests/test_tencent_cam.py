@@ -825,7 +825,7 @@ def test_extract_allowed_actions():
     # Empty/None returns empty set
     actions = _extract_allowed_actions("")
     assert actions == set()
-    actions = _extract_allowed_actions(None)
+    actions = _extract_allowed_actions(None)  # type: ignore[arg-type]
     assert actions == set()
 
 

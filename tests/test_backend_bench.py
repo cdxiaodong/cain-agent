@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -45,7 +46,8 @@ class FakeExecutor:
 
         self.prompts.append(prompt)
         verdict = "confirmed" if self.expected_marker in prompt else "rejected"
-        return ExecutorResult(text=json.dumps({"verdict": verdict}), usage=dict(self.usage))
+        usage: dict[str, Any] | None = dict(self.usage) if self.usage else None
+        return ExecutorResult(text=json.dumps({"verdict": verdict}), usage=usage)
 
 
 CLAUDE_USAGE = {

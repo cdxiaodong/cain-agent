@@ -361,7 +361,13 @@ class CamPrivescAnalyzer:
         """Get the list of group IDs a user belongs to."""
         result = self._call_api("ListGroupsForUser", {"Uin": uin})
         groups = result.get("Data", {}).get("GroupInfo", [])
-        return [g.get("GroupId") for g in groups if isinstance(g, dict)]
+        ids: list[int] = []
+        for g in groups:
+            if isinstance(g, dict):
+                group_id = g.get("GroupId")
+                if isinstance(group_id, int):
+                    ids.append(group_id)
+        return ids
 
     # -- analysis ------------------------------------------------------------
 
@@ -437,6 +443,8 @@ class CamPrivescAnalyzer:
                     # We need to extract PolicyDocument from the nested structure
                     policy_doc = version_data.get("PolicyVersion", {}).get("PolicyDocument")
         doc_str = json.dumps(policy_doc) if isinstance(policy_doc, dict) else policy_doc
+        if not isinstance(doc_str, str):
+            return set()
         return _extract_allowed_actions(doc_str)
 
     def _match_rules(

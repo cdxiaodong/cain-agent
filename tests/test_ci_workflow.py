@@ -25,8 +25,11 @@ def test_workflow_file_exists_and_parses(doc: dict) -> None:
 
 def test_triggers_cover_push_and_pr(doc: dict) -> None:
     on = doc.get(True) or doc.get("on")  # YAML 1.1 会把 on 解析为 True
+    assert isinstance(on, dict)
     assert "push" in on and "pull_request" in on
-    assert "main" in on["push"]["branches"]
+    push = on.get("push")
+    assert isinstance(push, dict)
+    assert "main" in push.get("branches", [])
 
 
 def test_matrix_python_versions(doc: dict) -> None:
