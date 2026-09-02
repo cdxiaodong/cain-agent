@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -155,12 +156,17 @@ class MultiAgentOrchestration:
 
 
 def build_orchestration(
-    validation_executor: SDKExecutor,
+    validation_executor: SDKExecutor | Callable[[], Any],
     *,
     session_count: int = 3,
     recovery_policy: RecoveryPolicy | None = None,
 ) -> MultiAgentOrchestration:
-    """Build the default central route without replacing Route A discovery."""
+    """Build the default central route without replacing Route A discovery.
+
+    ``validation_executor`` 接受两种形态:工厂(每个校验 session 调一次,
+    保证多会话互不共享状态——多数表决独立性的前提)或单个 executor 实例
+    (向后兼容;此时全部 session 共享该实例,独立性与实例自身实现相关)。
+    """
 
     if session_count < 2:
         raise ValueError("central orchestration needs at least two verification sessions")
@@ -179,8 +185,13 @@ def build_orchestration(
         AutoPromptEngine(policy=recovery_policy),
     )
     manager = PentestManager(blackboard, recovery=monitor)
+    factory: Callable[[], Any] = (
+        validation_executor
+        if callable(validation_executor) and not hasattr(validation_executor, "run")
+        else (lambda: validation_executor)
+    )
     sessions = tuple(
-        ExecutorVerificationSession(f"verify-{index}", validation_executor)
+        ExecutorVerificationSession(f"verify-{index}", factory())
         for index in range(session_count)
     )
     pool = VerificationPool(blackboard, sessions)
