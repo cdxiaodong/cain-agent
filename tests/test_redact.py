@@ -69,6 +69,17 @@ class TestPatternCoverage:
         assert FAKE_JWT not in result
         assert "REDACTED:jwt" in result
 
+    def test_bearer_token_ending_with_padding_chars(self) -> None:
+        """Base64 padding (`=`) and JWT dots at token end must still redact."""
+        padded = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sig=="
+        result = redact(padded)
+        assert "eyJhbGciOi" not in result
+        assert "REDACTED:bearer" in result
+        dotted = "Bearer abcdefghijklmnopqrst.u.v.w."
+        result2 = redact(dotted)
+        assert "abcdefghijklmnopqrst" not in result2
+        assert "REDACTED:bearer" in result2
+
     def test_bearer_token(self) -> None:
         text = f"Auth: {FAKE_BEARER}"
         result = redact(text)

@@ -115,7 +115,7 @@ REDACT_PATTERNS: tuple[RedactPattern, ...] = (
     # --- Bearer tokens ---
     RedactPattern(
         name="bearer",
-        pattern=r"(?i)(Bearer\s+)([A-Za-z0-9_\-\.=]{20,})\b",
+        pattern=r"(?i)(Bearer\s+)([A-Za-z0-9_\-\.=]{20,})(?![A-Za-z0-9_\-\.=])",
     ),
     # --- PEM private key blocks ---
     RedactPattern(
