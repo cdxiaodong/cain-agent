@@ -398,14 +398,19 @@ def _build_validation_executor(args: argparse.Namespace) -> Any:
     )
 
 
-def _build_orchestration(validation_executor: Any, workspace: Workspace) -> Any:
-    """Build the central multi-agent route; failures trigger Route A fallback."""
+def _build_orchestration(args: argparse.Namespace, workspace: Workspace) -> Any:
+    """Build the central multi-agent route; failures trigger Route A fallback.
+
+    校验池传 executor 工厂:每个校验 session 构造独立 executor,
+    保证多数表决的会话独立性(共享单实例会引入相关性)。
+    """
     from cain_agent.multi_agent.orchestration import build_orchestration
 
-    return build_orchestration(validation_executor)
+    return build_orchestration(lambda: _build_validation_executor(args))
 
 
 def _build_handlers(
+    args: argparse.Namespace,
     recon_executor: Any,
     test_executor: Any,
     validation_executor: Any,
@@ -431,7 +436,7 @@ def _build_handlers(
     recon_handler = make_recon_handler(recon_executor, skill_loader)
     test_handler = make_test_handler(test_executor, skill_loader)
     try:
-        orchestration = _build_orchestration(validation_executor, workspace)
+        orchestration = _build_orchestration(args, workspace)
         pipeline = FindingsPipeline(
             workspace,
             discovery_executor=test_executor,
@@ -518,7 +523,9 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         return EXIT_ARG_ERROR
 
     try:
-        handlers = _build_handlers(recon_executor, test_executor, validation_executor, workspace)
+        handlers = _build_handlers(
+            args, recon_executor, test_executor, validation_executor, workspace
+        )
     except Exception as exc:
         print(f"错误: handler 构造失败: {exc}", file=sys.stderr)
         return EXIT_ARG_ERROR

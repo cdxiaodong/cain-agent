@@ -204,7 +204,8 @@ def test_cli_uses_central_route_by_default(
     )
 
     assert code == 0
-    assert len(built) == 2, "中心编排复用 Route A 的发现与校验 executor"
+    # 发现(1)+校验(1)+池会话(3,独立构造,保证多数表决不共享状态)
+    assert len(built) == 5, "中心编排:发现/校验各 1,验证池每会话独立构造"
     report = json.loads((ws / AGGREGATED_REPORT_FILE).read_text(encoding="utf-8"))
     assert report["route"] == "multi_agent"
     assert report["summary"]["total"] == 1

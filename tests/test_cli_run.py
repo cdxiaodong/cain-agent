@@ -336,7 +336,8 @@ class TestClassicHandlers:
             capsys,
         )
         assert code == 0
-        assert len(built) == 2
+        # 发现(1) + 校验(1) + 中心编排验证池(3,每会话独立构造)
+        assert len(built) == 5
         assert built[0] is not built[1], "发现 executor 与校验 executor 必须是两个独立对象"
 
     def test_pipeline_receives_distinct_executors(
