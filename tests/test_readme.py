@@ -20,7 +20,7 @@ def test_core_sections_present():
         "## Architecture",
         "## Cloud Module",
         "## Benchmark",
-        "## Legal & Ethical Use",
+        "## ⚠️ Legal & Ethical Use",
         "## Status",
         "## License",
     ):
