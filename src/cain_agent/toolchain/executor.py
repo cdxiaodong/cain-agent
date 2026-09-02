@@ -77,9 +77,10 @@ class ToolExecutor:
                 duration=time.time() - start,
             )
         except FileNotFoundError:
+            binary = getattr(spec, "binary", None) or tool_name
             return ToolResult(
                 success=False,
-                stderr=f"工具 {spec.binary} 未找到，请确保已安装",
+                stderr=f"工具 {binary} 未找到，请确保已安装",
                 duration=time.time() - start,
             )
         except Exception as exc:  # noqa: BLE001

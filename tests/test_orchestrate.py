@@ -185,7 +185,7 @@ def _run_cli(
         main()
         code = 0
     except SystemExit as exc:
-        code = int(exc.code)
+        code = int(exc.code) if isinstance(exc.code, int) else 0
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 

@@ -144,8 +144,8 @@ def _load_kubernetes() -> tuple[Any, Any]:
     global kubernetes, config
     if kubernetes is None or config is None:
         try:
-            import kubernetes as kubernetes_module
-            from kubernetes import config as config_module
+            import kubernetes as kubernetes_module  # type: ignore[import-not-found]
+            from kubernetes import config as config_module  # type: ignore[import-not-found]
         except ImportError as exc:
             raise ImportError(
                 "kubernetes is required for RBAC checks; install it with cain-agent[cloud]"

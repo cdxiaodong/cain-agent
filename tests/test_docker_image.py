@@ -56,7 +56,7 @@ class _FakeResponse:
 class _FakeSession:
     def __init__(self, username: str | None = None, password: str | None = None) -> None:
         self.auth = (username, password) if username and password else None
-        self._calls: list[tuple[str, dict[str, Any]]] = []
+        self._calls: list[tuple[str, str, dict[str, Any]]] = []
 
     def post(self, url: str, json: dict[str, Any], headers: dict[str, Any], timeout: int) -> _FakeResponse:
         self._calls.append(("POST", url, json))
@@ -308,7 +308,8 @@ def test_scan_uses_trivy_url(fake_requests: _FakeSession) -> None:
     checker.check("test:latest")
     calls = fake_requests._calls
     assert len(calls) == 1
-    assert calls[0][1].startswith("http://custom-trivy:9000")
+    target = calls[0][1]
+    assert isinstance(target, str) and target.startswith("http://custom-trivy:9000")
 
 
 def test_scan_with_tag_parameter(fake_requests: _FakeSession) -> None:

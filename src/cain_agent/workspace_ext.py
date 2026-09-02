@@ -89,4 +89,5 @@ class WorkspaceWithBoard(BaseWorkspace):
         # 同步到 Blackboard
         for f in findings:
             finding = Finding(**f) if isinstance(f, dict) else f
-            self.blackboard.post_finding(finding, solver_id="legacy")
+            if isinstance(finding, Finding):
+                self.blackboard.post_finding(finding, solver_id="legacy")
