@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from cain_agent.executor import ExecutorResult, SDKExecutor
+from cain_agent.executor import ExecutorResult, SDKExecutor, ToolCallRecord, complete_tool_call
 from cain_agent.findings import Finding, FindingResult, Severity, fingerprint
 from cain_agent.handlers import (
     RECON_ENDPOINTS_FILE,
@@ -23,6 +23,7 @@ from cain_agent.handlers import (
     RECON_STATUS_FILE,
     TEST_RAW_FILE,
     SkillLoader,
+    _provenance_for,
     make_recon_handler,
     make_test_handler,
 )
@@ -68,6 +69,46 @@ def _write_skill(root: Path, name: str, phase: str, body: str) -> None:
         f"severity_focus: medium\n---\n\n{body}\n",
         encoding="utf-8",
     )
+
+
+def test_https_provenance_separates_port_from_status(ws: Workspace) -> None:
+    call = ToolCallRecord(
+        tool_use_id="request-1",
+        name="Bash",
+        input={"command": "curl -i https://example.com/"},
+    )
+    complete_tool_call(
+        call,
+        'HTTP/2 403\nalt-svc: h3=":443"; ma=86400\n\nforbidden',
+        succeeded=True,
+    )
+    provenance = _provenance_for(
+        {"resource": "https://example.com/", "evidence": "forbidden"},
+        ExecutorResult(tool_calls=[call]),
+        _ctx(ws, "test"),
+    )
+
+    assert provenance is not None
+    assert provenance["status_code"] == 403
+    assert provenance["port"] == 443
+
+
+def test_missing_http_status_makes_provenance_incomplete(ws: Workspace) -> None:
+    call = ToolCallRecord(
+        tool_use_id="request-1",
+        name="Bash",
+        input={"command": "curl -i https://example.com/"},
+    )
+    complete_tool_call(call, 'alt-svc: h3=":443"; ma=86400', succeeded=True)
+
+    provenance = _provenance_for(
+        {"resource": "https://example.com/", "evidence": "unknown"},
+        ExecutorResult(tool_calls=[call]),
+        _ctx(ws, "test"),
+    )
+
+    assert call.status_code is None
+    assert provenance is None
 
 
 # -- SkillLoader:按阶段过滤 + 降级 -------------------------------------------

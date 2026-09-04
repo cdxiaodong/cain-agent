@@ -441,6 +441,7 @@ def _provenance_for(
             "request_id": call.tool_use_id,
             "url": wanted,
             "host": parsed.hostname,
+            "port": parsed.port or (443 if parsed.scheme == "https" else 80),
             "method": _method_from_call(call),
             "timestamp": call.timestamp,
             "status_code": call.status_code,

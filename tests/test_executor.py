@@ -211,10 +211,16 @@ def _call() -> ToolCallRecord:
     return ToolCallRecord(tool_use_id="toolu_1", name="Bash", input={"command": "curl -sS -D - https://example.com/"})
 
 
-def test_status_code_from_real_status_line() -> None:
+@pytest.mark.parametrize("status_code", [200, 301, 403, 404])
+def test_https_port_443_preserves_http_status(status_code: int) -> None:
     call = _call()
-    complete_tool_call(call, "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html/>", succeeded=True)
-    assert call.status_code == 200
+    output = (
+        f"HTTP/2 {status_code}\n"
+        'alt-svc: h3=":443"; ma=86400\n'
+        "\nbody"
+    )
+    complete_tool_call(call, output, succeeded=True)
+    assert call.status_code == status_code
 
 
 def test_status_code_not_confused_by_alt_svc_443_port() -> None:
@@ -253,6 +259,14 @@ def test_status_code_none_when_no_unambiguous_signal() -> None:
     call = _call()
     complete_tool_call(call, "listening on port 8443, pid 443 started", succeeded=True)
     assert call.status_code is None
+
+
+def test_corrupt_status_code_443_is_not_inferred_from_https_port() -> None:
+    """Exact corruption regression: port 443 without a status line is incomplete."""
+    call = _call()
+    complete_tool_call(call, 'alt-svc: h3=":443"; ma=86400', succeeded=True)
+    assert call.status_code is None
+    assert call.status_code != 443
 
 
 def test_status_code_none_on_empty_output() -> None:

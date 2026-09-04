@@ -220,6 +220,11 @@ def has_confirmable_provenance(finding: Finding) -> bool:
     status = p.get("status_code")
     if not isinstance(status, int) or isinstance(status, bool) or not 100 <= status <= 599:
         return False
+    port = p.get("port")
+    if port is not None and (
+        not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535
+    ):
+        return False
     if not _EVIDENCE_HASH_RE.fullmatch(str(p["response_hash"])):
         return False
     try:
