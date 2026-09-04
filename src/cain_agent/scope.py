@@ -19,7 +19,7 @@ from typing import Any
 
 import yaml
 
-__all__ = ["Scope", "ScopeConfigError", "ScopeGuardHook"]
+__all__ = ["Scope", "ScopeConfigError", "ScopeGuardHook", "is_forbidden_target"]
 
 IpNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -32,6 +32,14 @@ _URL_RE = re.compile(r"(?i)\b(?:https?|ftp)://[^\s\"'<>]+")
 _HOST_HEADER_RE = re.compile(r"(?i)^\s*Host:\s*([^\s,;]+)")
 _IPV4_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}")
 _IPV4_CIDR_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}/\d{1,3}")
+
+_FORBIDDEN_PLACEHOLDER_HOSTS = frozenset({
+    "target.com",
+    "www.target.com",
+    "example.invalid",
+    "test.invalid",
+})
+_FORBIDDEN_SUFFIXES = (".localhost", ".local", ".invalid", ".test")
 
 # Tool names that execute an arbitrary shell command. The SDK uses "Bash"; the
 # extra aliases cover other shells so extraction treats them uniformly.
@@ -169,6 +177,34 @@ def _is_ip_literal(text: str) -> bool:
     return True
 
 
+def is_forbidden_target(target: str) -> bool:
+    """Reject common hallucination placeholders and non-routable local targets.
+
+    This denylist is independent from the configured allowlist. It prevents a
+    model from turning tutorial URLs or localhost-style destinations into a
+    real request, even if contaminated state later mentions them.
+    """
+    host = Scope._normalize_host(target)
+    if not host:
+        return True
+    if host in _FORBIDDEN_PLACEHOLDER_HOSTS or host == "localhost":
+        return True
+    if any(host.endswith(suffix) for suffix in _FORBIDDEN_SUFFIXES):
+        return True
+    try:
+        net = ipaddress.ip_network(host, strict=False)
+    except ValueError:
+        return False
+    return bool(
+        net.is_private
+        or net.is_loopback
+        or net.is_link_local
+        or net.is_multicast
+        or net.is_reserved
+        or net.is_unspecified
+    )
+
+
 def _looks_like_host(token: str) -> bool:
     """Heuristic: does this bare token plausibly name a host/IP target?"""
     if "://" in token:
@@ -214,9 +250,18 @@ class Scope:
     in_scope entry the target is denied (whitelist model).
     """
 
-    def __init__(self, in_scope: Sequence[str], out_of_scope: Sequence[str]) -> None:
+    def __init__(
+        self,
+        in_scope: Sequence[str],
+        out_of_scope: Sequence[str],
+        *,
+        allow_implicit_subdomains: bool = True,
+        block_non_public_targets: bool = False,
+    ) -> None:
         self.in_plain, self.in_wild, self.in_nets = self._bucket(in_scope, "in_scope")
         self.out_plain, self.out_wild, self.out_nets = self._bucket(out_of_scope, "out_of_scope")
+        self.allow_implicit_subdomains = allow_implicit_subdomains
+        self.block_non_public_targets = block_non_public_targets
 
     # -- construction / loading ------------------------------------------------
     @staticmethod
@@ -255,7 +300,16 @@ class Scope:
         out_of_scope = data.get("out_of_scope", [])
         cls._validate_list(in_scope, "in_scope")
         cls._validate_list(out_of_scope, "out_of_scope")
-        return cls(in_scope, out_of_scope)
+        allow_subdomains = data.get("allow_implicit_subdomains", True)
+        block_non_public = data.get("block_non_public_targets", False)
+        if not isinstance(allow_subdomains, bool) or not isinstance(block_non_public, bool):
+            raise ScopeConfigError("scope policy flags must be booleans")
+        return cls(
+            in_scope,
+            out_of_scope,
+            allow_implicit_subdomains=allow_subdomains,
+            block_non_public_targets=block_non_public,
+        )
 
     @classmethod
     def from_file(cls, path: str | Path) -> Scope:
@@ -280,7 +334,12 @@ class Scope:
     # -- authorization ---------------------------------------------------------
     def is_allowed(self, target: str) -> bool:
         """True iff ``target`` is in scope and not explicitly out of scope."""
-        host = self._normalize_host(target)
+        normalized = self._normalize_host(target)
+        if normalized in _FORBIDDEN_PLACEHOLDER_HOSTS:
+            return False
+        if self.block_non_public_targets and is_forbidden_target(target):
+            return False
+        host = normalized
         net = self._parse_net(host)
         if net is not None:
             # Deny-priority: any overlap with an out_of_scope network blocks it.
@@ -293,7 +352,12 @@ class Scope:
             return False
         if any(self._wildcard_matches(host, base) for base in self.out_wild):
             return False
-        if any(self._domain_matches(host, base) for base in self.in_plain):
+        if any(
+            self._domain_matches(host, base)
+            if self.allow_implicit_subdomains
+            else host == base
+            for base in self.in_plain
+        ):
             return True
         return any(self._wildcard_matches(host, base) for base in self.in_wild)
 

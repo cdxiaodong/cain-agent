@@ -116,6 +116,8 @@ def _write_scope_yaml(workspace: Workspace, target: str) -> None:
         "in_scope:\n"
         f"  - {_scope_entry(target)}\n"
         "out_of_scope: []\n"
+        "allow_implicit_subdomains: false\n"
+        "block_non_public_targets: false\n"
     )
     scope_path.write_text(content, encoding="utf-8")
 
@@ -157,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="initialize workspace + scope and print execution plan, don't start Agent",
+    )
+    run.add_argument(
+        "--language",
+        choices=("en", "zh"),
+        default="en",
+        help="primary language for agent prompts and the human-readable report (default: en)",
     )
     run.add_argument(
         "--backend",
@@ -406,7 +414,10 @@ def _build_orchestration(args: argparse.Namespace, workspace: Workspace) -> Any:
     """
     from cain_agent.multi_agent.orchestration import build_orchestration
 
-    return build_orchestration(lambda: _build_validation_executor(args))
+    return build_orchestration(
+        lambda: _build_validation_executor(args),
+        language=getattr(args, "language", "zh"),
+    )
 
 
 def _build_handlers(
@@ -433,8 +444,9 @@ def _build_handlers(
     from cain_agent.pipeline import FindingsPipeline, make_report_handler
 
     skill_loader = SkillLoader()  # 仓库 skills/ 根,既有约定
-    recon_handler = make_recon_handler(recon_executor, skill_loader)
-    test_handler = make_test_handler(test_executor, skill_loader)
+    language = getattr(args, "language", "zh")
+    recon_handler = make_recon_handler(recon_executor, skill_loader, language=language)
+    test_handler = make_test_handler(test_executor, skill_loader, language=language)
     try:
         orchestration = _build_orchestration(args, workspace)
         pipeline = FindingsPipeline(
@@ -442,13 +454,17 @@ def _build_handlers(
             discovery_executor=test_executor,
             validation_executor=validation_executor,
             verification_pool=orchestration.verification_pool,
+            language=language,
         )
-        report_handler = make_multi_agent_report_handler(pipeline, orchestration)
+        report_handler = make_multi_agent_report_handler(
+            pipeline, orchestration, language=language
+        )
     except Exception:
         pipeline = FindingsPipeline(
             workspace,
             discovery_executor=test_executor,
             validation_executor=validation_executor,
+            language=language,
         )
         report_handler = make_report_handler(pipeline)
     return {
@@ -483,6 +499,7 @@ def cmd_run(args: argparse.Namespace, stdout: Any | None = None) -> int:
         print(f"  授权范围: {workspace.path(SCOPE_FILE).resolve()}", file=stdout)
         print("  阶段:     recon → test → report", file=stdout)
         print(f"  后端:     {args.backend}", file=stdout)
+        print(f"  language: {args.language}", file=stdout)
         print(f"  工具白名单: {DEFAULT_ALLOWED_TOOLS}", file=stdout)
         if args.backend == "pi":
             print(f"  pi provider/model: {args.pi_provider}/{args.pi_model or '默认'}", file=stdout)

@@ -20,7 +20,7 @@ import pytest
 import cain_agent.pipeline as pipeline_mod
 from cain_agent import __version__
 from cain_agent.cli import build_parser, is_local_target, main
-from cain_agent.executor import ExecutorResult
+from cain_agent.executor import ExecutorResult, ToolCallRecord, complete_tool_call
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -350,7 +350,13 @@ class TestClassicHandlers:
         captured: dict[str, Any] = {}
         real_pipeline = pipeline_mod.FindingsPipeline
 
-        def spy(workspace: Any, *, discovery_executor: Any, validation_executor: Any) -> Any:
+        def spy(
+            workspace: Any,
+            *,
+            discovery_executor: Any,
+            validation_executor: Any,
+            **kwargs: Any,
+        ) -> Any:
             captured["discovery"] = discovery_executor
             captured["validation"] = validation_executor
             return real_pipeline(
@@ -477,7 +483,7 @@ class TestConstructionFailure:
 
 def _canned_response(prompt: str) -> str:
     """按 prompt 中的 Agent 角色返回预制 JSON(测试专用,绝不触网)。"""
-    if "侦察 Agent" in prompt:
+    if "侦察 Agent" in prompt or "reconnaissance agent" in prompt:
         return json.dumps(
             {
                 "endpoints": [
@@ -492,7 +498,7 @@ def _canned_response(prompt: str) -> str:
             },
             ensure_ascii=False,
         )
-    if "测试 Agent" in prompt:
+    if "测试 Agent" in prompt or "testing agent" in prompt:
         return json.dumps(
             {
                 "findings": [
@@ -509,7 +515,7 @@ def _canned_response(prompt: str) -> str:
             },
             ensure_ascii=False,
         )
-    if "校验 Agent" in prompt:
+    if "校验 Agent" in prompt or "validation agent" in prompt:
         return json.dumps(
             {"result": "confirmed", "severity": "high", "reason": "证据成立"},
             ensure_ascii=False,
@@ -537,7 +543,16 @@ class _FakeExecutor:
 
     async def run(self, prompt: str) -> ExecutorResult:
         self.prompts.append(prompt)
-        return ExecutorResult(text=_canned_response(prompt), session_id=self.session_id)
+        result = ExecutorResult(text=_canned_response(prompt), session_id=self.session_id)
+        if "testing agent" in prompt or "测试 Agent" in prompt:
+            call = ToolCallRecord(
+                tool_use_id="fake-request-1",
+                name="Bash",
+                input={"command": "curl -i 'http://127.0.0.1:8080/login?id=1'"},
+            )
+            complete_tool_call(call, "HTTP/1.1 200 OK\n\nresponse", succeeded=True)
+            result.tool_calls.append(call)
+        return result
 
 
 def _mock_executors(monkeypatch: pytest.MonkeyPatch) -> list[Any]:

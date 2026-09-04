@@ -454,13 +454,101 @@ _LEGAL_DISCLAIMER = """## 法律声明
 产生的法律责任。"""
 
 
-def render_report_markdown(report: dict[str, Any], meta: ExecutionMeta) -> str:
+def _render_report_english(report: dict[str, Any], meta: ExecutionMeta) -> str:
+    """Render a compact English report from the same machine-readable source."""
+    summary = report.get("summary") or {}
+    conclusions = sorted(report.get("conclusions") or [], key=_conclusion_sort_key)
+    total = summary.get("total", 0)
+    lines = [
+        "# Cain Penetration Test Report",
+        "",
+        f"> {total} finding(s) · Machine-readable version: `aggregated-report.json`",
+        "",
+        "## Executive summary",
+        "",
+        f"- Authorized target(s): {', '.join(meta.scope_in) if meta.scope_in else '(not configured)'}",
+        f"- Generated: {meta.generated_at or '—'} (UTC)",
+        f"- Orchestration route: {report.get('route', '?')}",
+        "",
+        "## Stage timing",
+        "",
+    ]
+    if meta.stage_timings:
+        lines += [
+            "| Stage | Started (UTC) | Finished (UTC) | Seconds |",
+            "|---|---|---|---|",
+        ]
+        for timing in meta.stage_timings:
+            lines.append(
+                f"| {_escape_cell(timing.stage)} | {_escape_cell(timing.started_at)} | "
+                f"{_escape_cell(timing.finished_at)} | {_format_duration(timing.duration_seconds)} |"
+            )
+    else:
+        lines.append(f"_{meta.timings_note or 'No stage history available.'}_")
+    lines += ["", "## Findings", ""]
+    if not conclusions:
+        lines += ["_No findings were produced._", ""]
+    else:
+        lines += [
+            "| # | Severity | Type | Resource | Result | Confidence |",
+            "|---|---|---|---|---|---|",
+        ]
+        for index, item in enumerate(conclusions, 1):
+            severity = str(item.get("severity", "?"))
+            lines.append(
+                f"| {index} | {_severity_marker(severity)} {severity.upper()} | "
+                f"{_escape_cell(item.get('issue_type', '?'))} | "
+                f"{_escape_cell(item.get('resource', '?'))} | "
+                f"{_escape_cell(item.get('result', '?'))} | "
+                f"{_format_confidence(item.get('confidence'))} |"
+            )
+        lines.append("")
+        for item in conclusions:
+            severity = str(item.get("severity", "?"))
+            lines += [
+                f"### {_severity_marker(severity)} [{severity.upper()}] "
+                f"{_escape_cell(item.get('issue_type', '?'))}",
+                "",
+                f"- Resource: `{_escape_cell(item.get('resource', '?'))}`",
+                f"- Result: {_escape_cell(item.get('result', '?'))}",
+                f"- Evidence hash: `{item.get('evidence_hash', '?')}`",
+            ]
+            invalid = item.get("invalid_reasons") or []
+            if invalid:
+                lines.append(f"- Invalidity markers: {', '.join(map(str, invalid))}")
+            provenance = item.get("provenance")
+            if provenance:
+                lines.append(
+                    f"- Executed request: {provenance.get('method', '?')} "
+                    f"{provenance.get('url', '?')} → HTTP {provenance.get('status_code', '?')}"
+                )
+            lines += [
+                "- Context chain (auxiliary only): " + _basis_summary(item),
+                "",
+            ]
+    lines += [
+        "## Legal notice",
+        "",
+        "This report is for an explicitly authorized, read-only security assessment. "
+        "Scope is enforced by configuration. Evidence plaintext is not persisted, and "
+        "consensus or semantic memory never substitutes for executed-request evidence.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def render_report_markdown(
+    report: dict[str, Any], meta: ExecutionMeta, *, language: str = "zh"
+) -> str:
     """把聚合报告 dict + 执行元数据渲染为人类可读 markdown。
 
     纯函数、纯 Python 字符串拼接:同一输入恒定输出(生成时间由
     ``meta.generated_at`` 显式携带),便于渲染测试钉死三态
     (空 / 单条 / 多 severity)。
     """
+
+    if language == "en":
+        return _render_report_english(report, meta)
 
     total = (report.get("summary") or {}).get("total", 0)
     lines = [

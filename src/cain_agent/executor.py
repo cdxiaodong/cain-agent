@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from claude_agent_sdk import (
@@ -28,7 +31,9 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     query,
 )
 from claude_agent_sdk.types import HookEvent
@@ -50,6 +55,59 @@ class ToolCallRecord:
     tool_use_id: str
     name: str
     input: dict[str, Any]
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds")
+    )
+    completed: bool = False
+    succeeded: bool = False
+    response_hash: str | None = None
+    status_code: int | None = None
+
+
+_HTTP_STATUS_LINE_RE = re.compile(r"(?im)^HTTP/\S+\s+(\d{3})\b")
+"""Matches a genuine status line (``curl -D -``/``-i`` style: ``HTTP/2 200``)."""
+
+_BARE_STATUS_CODE_RE = re.compile(r"\A[1-5]\d{2}\Z")
+"""Matches output that *is*, in its entirety, a 3-digit status code — the
+``curl -s -o /dev/null -w '%{http_code}'`` idiom, which prints nothing else."""
+
+
+def _tool_output_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "\n".join(parts)
+    return ""
+
+
+def complete_tool_call(record: ToolCallRecord, output: object, *, succeeded: bool) -> None:
+    """Attach non-secret execution facts to a tool call without persisting response text.
+
+    ``status_code`` is only ever set from an unambiguous signal: a real
+    ``HTTP/x.y NNN`` status line, or output that consists of nothing but a
+    3-digit code. A prior looser fallback scanned the *entire* tool output for
+    any bare 3-digit number in [100, 599] and took the last one found —  which
+    reliably misfired on Cloudflare-fronted targets, where the response
+    headers include an ``Alt-Svc: h3=":443"`` (or similar) header: "443"
+    sorts after the real "HTTP/2 200" status line, so it silently overwrote
+    the recorded status. Never guess a status code from unrelated digits in
+    the body/headers — leave it ``None`` when there is no unambiguous line.
+    """
+    text = _tool_output_text(output)
+    record.completed = True
+    record.succeeded = succeeded
+    record.response_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    status_lines = list(_HTTP_STATUS_LINE_RE.finditer(text))
+    if status_lines:
+        record.status_code = int(status_lines[-1].group(1))
+        return
+    bare = _BARE_STATUS_CODE_RE.match(text.strip())
+    if bare:
+        record.status_code = int(bare.group())
 
 
 @dataclass
@@ -177,6 +235,15 @@ class SDKExecutor:
                         elif isinstance(block, ToolUseBlock):
                             result.tool_calls.append(
                                 ToolCallRecord(tool_use_id=block.id, name=block.name, input=block.input)
+                            )
+                elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                    by_id = {call.tool_use_id: call for call in result.tool_calls}
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock) and block.tool_use_id in by_id:
+                            complete_tool_call(
+                                by_id[block.tool_use_id],
+                                block.content,
+                                succeeded=not bool(block.is_error),
                             )
                 elif isinstance(message, SystemMessage):
                     if message.subtype == "init":
