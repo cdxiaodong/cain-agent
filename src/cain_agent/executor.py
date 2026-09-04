@@ -64,7 +64,12 @@ class ToolCallRecord:
     status_code: int | None = None
 
 
-_HTTP_STATUS_RE = re.compile(r"(?im)^HTTP/\S+\s+(\d{3})\b|(?:^|\D)([1-5]\d{2})(?:\D|$)")
+_HTTP_STATUS_LINE_RE = re.compile(r"(?im)^HTTP/\S+\s+(\d{3})\b")
+"""Matches a genuine status line (``curl -D -``/``-i`` style: ``HTTP/2 200``)."""
+
+_BARE_STATUS_CODE_RE = re.compile(r"\A[1-5]\d{2}\Z")
+"""Matches output that *is*, in its entirety, a 3-digit status code — the
+``curl -s -o /dev/null -w '%{http_code}'`` idiom, which prints nothing else."""
 
 
 def _tool_output_text(content: object) -> str:
@@ -80,15 +85,29 @@ def _tool_output_text(content: object) -> str:
 
 
 def complete_tool_call(record: ToolCallRecord, output: object, *, succeeded: bool) -> None:
-    """Attach non-secret execution facts to a tool call without persisting response text."""
+    """Attach non-secret execution facts to a tool call without persisting response text.
+
+    ``status_code`` is only ever set from an unambiguous signal: a real
+    ``HTTP/x.y NNN`` status line, or output that consists of nothing but a
+    3-digit code. A prior looser fallback scanned the *entire* tool output for
+    any bare 3-digit number in [100, 599] and took the last one found —  which
+    reliably misfired on Cloudflare-fronted targets, where the response
+    headers include an ``Alt-Svc: h3=":443"`` (or similar) header: "443"
+    sorts after the real "HTTP/2 200" status line, so it silently overwrote
+    the recorded status. Never guess a status code from unrelated digits in
+    the body/headers — leave it ``None`` when there is no unambiguous line.
+    """
     text = _tool_output_text(output)
     record.completed = True
     record.succeeded = succeeded
     record.response_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
-    matches = list(_HTTP_STATUS_RE.finditer(text))
-    if matches:
-        raw = matches[-1].group(1) or matches[-1].group(2)
-        record.status_code = int(raw)
+    status_lines = list(_HTTP_STATUS_LINE_RE.finditer(text))
+    if status_lines:
+        record.status_code = int(status_lines[-1].group(1))
+        return
+    bare = _BARE_STATUS_CODE_RE.match(text.strip())
+    if bare:
+        record.status_code = int(bare.group())
 
 
 @dataclass

@@ -28,6 +28,8 @@ from cain_agent.executor import (
     INTERRUPT_IDLE_TIMEOUT,
     INTERRUPT_TOTAL_BUDGET,
     SDKExecutor,
+    ToolCallRecord,
+    complete_tool_call,
 )
 
 
@@ -193,3 +195,69 @@ def test_invalid_timeouts_rejected() -> None:
         SDKExecutor(idle_timeout=0)
     with pytest.raises(ValueError):
         SDKExecutor(total_budget=-1)
+
+
+# -- complete_tool_call: status_code extraction ------------------------------
+# Regression for finding test-d880dadd, whose provenance recorded
+# status_code=443 (a port number, not an HTTP status) instead of the real
+# 200. Root cause: the old regex scanned the *whole* tool output for any bare
+# 3-digit number in [100,599] and took the last match — which reliably
+# misfires on Cloudflare-fronted targets, since Cloudflare responses commonly
+# carry an `Alt-Svc: h3=":443"` header whose "443" sorts after the real
+# "HTTP/2 200" status line.
+
+
+def _call() -> ToolCallRecord:
+    return ToolCallRecord(tool_use_id="toolu_1", name="Bash", input={"command": "curl -sS -D - https://example.com/"})
+
+
+def test_status_code_from_real_status_line() -> None:
+    call = _call()
+    complete_tool_call(call, "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html/>", succeeded=True)
+    assert call.status_code == 200
+
+
+def test_status_code_not_confused_by_alt_svc_443_port() -> None:
+    """The exact bug: a real 200 response with a trailing Alt-Svc header
+    advertising port 443 must not overwrite the recorded status."""
+    output = (
+        "HTTP/2 200\n"
+        "date: Thu, 04 Sep 2026 18:13:03 GMT\n"
+        "content-type: text/html; charset=utf-8\n"
+        "x-content-type-options: nosniff\n"
+        "x-frame-options: SAMEORIGIN\n"
+        'alt-svc: h3=":443"; ma=86400,h3-29=":443"; ma=86400\n'
+        "\n"
+        "<html>...</html>"
+    )
+    call = _call()
+    complete_tool_call(call, output, succeeded=True)
+    assert call.status_code == 200
+
+
+def test_status_code_uses_final_line_after_redirects() -> None:
+    output = "HTTP/1.1 301 Moved Permanently\nLocation: /new\n\nHTTP/1.1 200 OK\n\nbody"
+    call = _call()
+    complete_tool_call(call, output, succeeded=True)
+    assert call.status_code == 200
+
+
+def test_status_code_bare_http_code_idiom() -> None:
+    """`curl -s -o /dev/null -w '%{http_code}'` prints nothing but the code."""
+    call = _call()
+    complete_tool_call(call, "200", succeeded=True)
+    assert call.status_code == 200
+
+
+def test_status_code_none_when_no_unambiguous_signal() -> None:
+    call = _call()
+    complete_tool_call(call, "listening on port 8443, pid 443 started", succeeded=True)
+    assert call.status_code is None
+
+
+def test_status_code_none_on_empty_output() -> None:
+    call = _call()
+    complete_tool_call(call, "", succeeded=True)
+    assert call.status_code is None
+    assert call.completed is True
+    assert call.succeeded is True
