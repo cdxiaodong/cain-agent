@@ -130,12 +130,138 @@ def test_skill_loader_filters_by_phase(tmp_path: Path) -> None:
 
 
 def test_skill_loader_real_web_skills_are_test_phase() -> None:
-    """真实 skills/web 三技能(sqli/ssrf/xss)phase=test,只能被 test 阶段加载。"""
+    """Every repository web skill is visible in test and absent from recon."""
     loader = SkillLoader(SKILLS_ROOT)
     names = {s.name for s in loader.load("test")}
-    assert {"sqli", "ssrf", "xss"} <= names
+    expected = {path.parent.name for path in SKILLS_ROOT.glob("web/*/SKILL.md")}
+    assert names == expected
     recon_names = {s.name for s in loader.load("recon")}
-    assert not ({"sqli", "ssrf", "xss"} & recon_names)
+    assert not (expected & recon_names)
+    assert not any("技能已排除" in issue for issue in loader.issues)
+
+
+def test_skill_loader_missing_frontmatter_is_explicit(tmp_path: Path) -> None:
+    path = tmp_path / "missing" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text("# Missing metadata\n", encoding="utf-8")
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert any("missing/SKILL.md" in issue and "frontmatter" in issue for issue in loader.issues)
+
+
+def test_skill_loader_malformed_frontmatter_is_explicit(tmp_path: Path) -> None:
+    path = tmp_path / "broken" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text("---\nname: [broken\n---\n# Broken\n", encoding="utf-8")
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert any("broken/SKILL.md" in issue and "格式错误" in issue for issue in loader.issues)
+
+
+def test_skill_loader_duplicate_name_excludes_later_path(tmp_path: Path) -> None:
+    _write_skill(tmp_path, "a", "test", "first")
+    _write_skill(tmp_path, "b", "test", "second")
+    second = tmp_path / "b" / "SKILL.md"
+    second.write_text(second.read_text(encoding="utf-8").replace("name: b", "name: a"), encoding="utf-8")
+    loader = SkillLoader(tmp_path)
+
+    skills = loader.load("test")
+    assert [(skill.name, skill.path) for skill in skills] == [("a", "a/SKILL.md")]
+    assert any("name='a'" in issue and "冲突" in issue for issue in loader.issues)
+
+
+def test_skill_loader_missing_required_metadata_is_explicit(tmp_path: Path) -> None:
+    path = tmp_path / "incomplete" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text("---\nname: incomplete\nphase: test\n---\n# Incomplete\n", encoding="utf-8")
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert any("description" in issue and "severity_focus" in issue for issue in loader.issues)
+
+
+def test_skill_loader_duplicate_yaml_key_is_rejected(tmp_path: Path) -> None:
+    """A copy-paste error that repeats a frontmatter key must not silently
+    resolve to whichever value PyYAML happens to keep last."""
+    path = tmp_path / "dupe-key" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text(
+        "---\nname: dupe-key\ndescription: d\nphase: test\nphase: recon\n"
+        "severity_focus: medium\n---\n# Dupe key\n",
+        encoding="utf-8",
+    )
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert loader.load("recon") == []
+    assert any("dupe-key/SKILL.md" in issue and "格式错误" in issue for issue in loader.issues)
+
+
+def test_skill_loader_same_name_different_phases_is_not_a_conflict(tmp_path: Path) -> None:
+    """Reusing a name across two *different* phases is not a real conflict —
+    each phase renders its own independent skill set. Regression: the loader
+    used to register every scanned file's name globally before filtering by
+    phase, so a same-named skill in an unrelated phase could silently exclude
+    the one actually being loaded for the requested phase."""
+    _write_skill(tmp_path, "shared-name", "recon", "recon body")
+    recon_skill_path = tmp_path / "shared-name" / "SKILL.md"
+    test_dir = tmp_path / "zzz-shared-name"
+    test_dir.mkdir()
+    (test_dir / "SKILL.md").write_text(
+        recon_skill_path.read_text(encoding="utf-8").replace("phase: recon", "phase: test"),
+        encoding="utf-8",
+    )
+
+    loader = SkillLoader(tmp_path)
+    recon_skills = loader.load("recon")
+    test_skills = loader.load("test")
+
+    assert [s.name for s in recon_skills] == ["shared-name"]
+    assert [s.name for s in test_skills] == ["shared-name"]
+    assert not any("冲突" in issue for issue in loader.issues)
+
+
+def test_skill_loader_invalid_severity_focus_is_explicit(tmp_path: Path) -> None:
+    path = tmp_path / "bad-severity" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text(
+        "---\nname: bad-severity\ndescription: d\nphase: test\n"
+        "severity_focus: catastrophic\n---\n# Bad severity\n",
+        encoding="utf-8",
+    )
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert any("severity_focus" in issue for issue in loader.issues)
+
+
+def test_skill_loader_non_string_description_is_explicit(tmp_path: Path) -> None:
+    path = tmp_path / "bad-description" / "SKILL.md"
+    path.parent.mkdir()
+    path.write_text(
+        "---\nname: bad-description\ndescription: [1, 2]\nphase: test\n"
+        "severity_focus: medium\n---\n# Bad description\n",
+        encoding="utf-8",
+    )
+    loader = SkillLoader(tmp_path)
+
+    assert loader.load("test") == []
+    assert any("description" in issue for issue in loader.issues)
+
+
+def test_recon_handler_surfaces_skill_loader_issues_as_caveats(ws: Workspace) -> None:
+    skills_root = ws.root / "broken-skills"
+    (skills_root / "broken").mkdir(parents=True)
+    (skills_root / "broken" / "SKILL.md").write_text("# No frontmatter\n", encoding="utf-8")
+
+    executor = FakeExecutor('{"endpoints": []}')
+    handler = make_recon_handler(executor, SkillLoader(skills_root))
+    result = handler(_ctx(ws, "recon"))
+
+    assert any("技能加载问题" in caveat for caveat in result.data["caveats"])
+    assert "技能加载问题" in result.summary
 
 
 def test_skill_loader_missing_dir_degrades(tmp_path: Path) -> None:

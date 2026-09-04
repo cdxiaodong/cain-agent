@@ -75,6 +75,10 @@ _DEFAULT_SKILLS_ROOT = Path(__file__).resolve().parents[2] / "skills"
 
 _TRUNCATION_MARK = "…"
 
+_VALID_SKILL_PHASES = frozenset({"recon", "test", "framework", "report"})
+_VALID_SEVERITY_FOCUS = frozenset(s.value for s in Severity)
+_REQUIRED_SKILL_METADATA = ("name", "description", "phase", "severity_focus")
+
 RECON_STATUS_FILE = "recon/status.json"
 """Machine-readable structural validity gate consumed by the test stage."""
 
@@ -94,15 +98,43 @@ class Skill:
     content: str
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """``SafeLoader`` variant that rejects duplicate mapping keys.
+
+    PyYAML's default loader silently keeps the *last* value for a repeated
+    key (standard YAML behavior) and never raises — a copy-paste error in a
+    skill's frontmatter (e.g. two ``phase:`` lines) would otherwise resolve
+    to whichever value happens to come last, with no signal that anything
+    was wrong.
+    """
+
+
+def _construct_unique_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict[str, Any]:
+    seen: set[Any] = set()
+    for key_node, _value_node in node.value:
+        key = loader.construct_object(key_node, deep=False)
+        if key in seen:
+            raise yaml.constructor.ConstructorError(
+                None, None, f"found duplicate key {key!r}", key_node.start_mark
+            )
+        seen.add(key)
+    return loader.construct_mapping(node)
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
+)
+
+
 def _parse_frontmatter(text: str) -> dict[str, Any] | None:
-    """拆出 YAML frontmatter;无 frontmatter 或解析失败返回 None。"""
+    """拆出 YAML frontmatter;无 frontmatter、含重复键或解析失败返回 None。"""
     if not text.startswith("---\n"):
         return None
     end = text.find("\n---\n", 4)
     if end == -1:
         return None
     try:
-        data = yaml.safe_load(text[4:end])
+        data = yaml.load(text[4:end], Loader=_UniqueKeyLoader)
     except yaml.YAMLError:
         return None
     return data if isinstance(data, dict) else None
@@ -119,35 +151,72 @@ class SkillLoader:
         self.skills_root = Path(skills_root) if skills_root is not None else _DEFAULT_SKILLS_ROOT
         self.issues: list[str] = []
 
+    def _issue(self, message: str) -> None:
+        """Record a loader problem once, even when a loader is rendered repeatedly."""
+        if message not in self.issues:
+            self.issues.append(message)
+
     def load(self, phase: str) -> list[Skill]:
         """加载指定阶段的全部技能(按路径排序,输出稳定)。"""
         if not self.skills_root.is_dir():
-            self.issues.append(f"技能目录缺失: {self.skills_root}({phase} 阶段降级为无技能)")
+            self._issue(f"技能目录缺失: {self.skills_root}({phase} 阶段降级为无技能)")
             return []
         skills: list[Skill] = []
+        seen_names: dict[str, Path] = {}
         for path in sorted(self.skills_root.rglob("SKILL.md")):
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError as exc:
-                self.issues.append(f"技能文件不可读: {path}({exc})")
+                self._issue(f"技能文件不可读: {path}({exc})")
                 continue
             frontmatter = _parse_frontmatter(text)
             if frontmatter is None:
-                # 旧格式技能无 phase 字段,不参与阶段注入(与 test_skill_format 口径一致)。
+                reason = "缺少或无法解析 YAML frontmatter"
+                if text.startswith("---\n"):
+                    reason = "YAML frontmatter 格式错误、含重复键或不是映射"
+                self._issue(f"技能已排除: {path}({reason})")
                 continue
-            if frontmatter.get("phase") != phase:
+            missing = [key for key in _REQUIRED_SKILL_METADATA if not frontmatter.get(key)]
+            if missing:
+                self._issue(f"技能已排除: {path}(元数据缺失: {', '.join(missing)})")
                 continue
-            name = frontmatter.get("name")
+            skill_phase = frontmatter["phase"]
+            if not isinstance(skill_phase, str) or skill_phase not in _VALID_SKILL_PHASES:
+                self._issue(f"技能已排除: {path}(无效 phase: {skill_phase!r})")
+                continue
+            name = frontmatter["name"]
+            if not isinstance(name, str):
+                self._issue(f"技能已排除: {path}(name 必须是字符串)")
+                continue
+            description = frontmatter["description"]
+            if not isinstance(description, str):
+                self._issue(f"技能已排除: {path}(description 必须是字符串)")
+                continue
+            severity_focus = frontmatter["severity_focus"]
+            if not isinstance(severity_focus, str) or severity_focus not in _VALID_SEVERITY_FOCUS:
+                self._issue(f"技能已排除: {path}(无效 severity_focus: {severity_focus!r})")
+                continue
+            # 阶段过滤必须先于重名检测:重名冲突只在"同一阶段"的候选集里才有意义——
+            # 否则 recon 阶段的技能会错误地"占用"一个名字,导致 test 阶段里
+            # 名字相同但完全无关的技能被误判为冲突而被排除(阶段间假冲突)。
+            if skill_phase != phase:
+                continue
+            if name in seen_names:
+                self._issue(
+                    f"技能已排除: {path}(name={name!r} 与 {seen_names[name]} 在阶段 {phase!r} 内冲突)"
+                )
+                continue
+            seen_names[name] = path
             skills.append(
                 Skill(
-                    name=name if isinstance(name, str) and name else path.parent.name,
+                    name=name,
                     phase=phase,
                     path=path.relative_to(self.skills_root).as_posix(),
                     content=text,
                 )
             )
         if not skills:
-            self.issues.append(f"阶段 {phase!r} 零技能命中(降级为无技能 prompt)")
+            self._issue(f"阶段 {phase!r} 零技能命中(降级为无技能 prompt)")
         return skills
 
     def render(self, phase: str) -> str:
@@ -464,7 +533,9 @@ def make_recon_handler(
     """
 
     def handler(ctx: StageContext) -> StageResult:
+        issues_before = len(skill_loader.issues)
         prompt = _build_recon_prompt(ctx, skill_loader.render("recon"), language)
+        skill_issues = skill_loader.issues[issues_before:]
         result = _run_sync(executor, prompt)
 
         # 脱敏接线:Agent 输出进 workspace 前一律过 redact(§3.2)。
@@ -510,6 +581,8 @@ def make_recon_handler(
         _write_json(status_path, recon_status)
 
         caveats: list[str] = []
+        for issue in skill_issues:
+            caveats.append(f"技能加载问题: {issue}")
         if result.interrupted:
             caveats.append(f"执行被中断({result.interrupt_reason}),产物为部分结果")
         if result.is_error:
@@ -718,9 +791,11 @@ def make_test_handler(
                 )
         assets = ctx.workspace.load_assets()
 
+        issues_before = len(skill_loader.issues)
         prompt = _build_test_prompt(
             ctx, skill_loader.render("test"), endpoints, assets, language
         )
+        skill_issues = skill_loader.issues[issues_before:]
         result = _run_sync(executor, prompt)
 
         # 脱敏接线:Agent 输出进 workspace 前一律过 redact(§3.2)。
@@ -767,6 +842,8 @@ def make_test_handler(
         ctx.workspace.save_findings([finding.to_dict() for finding in merged])
 
         caveats: list[str] = []
+        for issue in skill_issues:
+            caveats.append(f"技能加载问题: {issue}")
         if result.interrupted:
             caveats.append(f"执行被中断({result.interrupt_reason}),产物为部分结果")
         if result.is_error:
