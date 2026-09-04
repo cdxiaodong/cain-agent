@@ -77,6 +77,11 @@
 - [x] IAM/RAM 提权路径图可视化(2026-08-12 iam-graph 分支交付:有向图建模+BFS 提权路径+DOT 导出,已合入 main;ROADMAP 08-22 补记勾选)
 - [x] 2-3 篇技术文章(2026-08-10,多 Agent 团队完成「首个懂国产云」「校验闭环设计」「Benchmark 体系」三篇)
 - [x] Gitee 同步(2026-08-30 合入 bf13143:scripts/gitee_sync.sh 镜像推送,GITEE_TOKEN 环境变量零硬编码+dry-run,README「国内镜像」节,真推留用户首推)
+- [x] 社区贡献审查(2026-09-03 合入 4096e00:外部 issue #4-#8 安全审查
+  确认并修复——验证池独立性/scope 对称拒绝/bearer 脱敏/blackboard 健壮性;
+  PR#2 思路吸收 31cd94b;issue/PR 关闭时机留用户拍板)
+- [ ] v0.2.1 发版(2026-09-04 预案终备就绪:docs/release/v0.2.1-release-plan.md,
+  六步命令+回滚,含 #4-#8 安全修复的 67 commit 积累;**待用户拍板执行**)
 - [ ] 社区运营
 
 ## Phase 4 · 达标冲刺(2027.05-07)

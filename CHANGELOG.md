@@ -1,5 +1,41 @@
 # CHANGELOG — cain-agent
 
+## 2026-09-04 · v0.2.1 发布预案终备(待拍板,未发版)
+
+- **事实修正**:v0.2.0 实际已于 2026-08-25 发布(tag `4b2026cf`,GitHub
+  Release 非 draft),其后 main 积累 67 个未发布 commit——含社区安全修复,
+  应发 **v0.2.1 patch**;`docs/release/v0.2.0-checklist.md` 归档(补发布
+  事实与事后核验,Release Gates 勾销)
+- **`docs/release/v0.2.1-release-plan.md`(新)**:发版主因(安全修复)/
+  用户可见变更摘要/终检数据/六步命令预案/回滚预案/不执行声明——版本
+  bump、tag、release create 均留用户拍板
+- 测试 +7 例(`tests/test_release_v021_plan.py`);基线 1076 绿
+
+## 2026-09-02/03 · 社区贡献审查修复(#4-#8)+ PR 处理
+
+- **验证池会话独立**(#5,c39f1dd):验证池改工厂模式,每会话独立构造
+  executor——修复多会话共享同一执行器的隔离缺陷;关联测试计数同步
+- **scope 对称拒绝**(#4,f801c20):非 Bash 工具调用无目标字段时只读
+  工具(Read/Grep/Glob)白名单放行、其余默认拒绝——默认拒绝语义补全
+- **Bearer 脱敏正则**(#6,1651d9e):`\b` 换字符类终止断言,支持 `=`/`.`
+  结尾 token,修复长 token 尾部漏脱敏
+- **blackboard 健壮性**(#7 #8,665e3b9):损坏状态文件告警化不再静默吞
+  异常;`save_findings` 按 finding_id 查重 + 字段白名单映射
+- **PR #2**(README 测试思路):吸收为 `31cd94b` 章节骨架完整性断言,
+  保留 OWASP/cloud 覆盖,0ab1f00 补 Legal 段 ⚠️ 前缀对齐;issue #4-#8 与
+  PR #3 按用户指令保持 open(修复已合入 4096e00,等用户决定关闭时机)
+- 测试 +33 例;基线 1069 绿
+
+## 2026-09-02 · 用户指南 + pyright 基线清零
+
+- **用户指南 `docs/usage.md`**(854ef6b):安装(基础/cloud/dev/Node 桥)→
+  首次运行(scope.yaml 示例与 PreToolUse 工程强制口径)→ 输出产物三件套
+  → 双后端选型 → 按阶段混搭模型 → FAQ,8 例格式测试
+- **pyright 22 基线错误清零**(901ca83):源码 5 处 + 测试 7 文件,
+  `ci.yml` continue-on-error 移除,类型硬门恢复(1058 绿)
+- **CI 修复**(e2e5ac9/3b6837d):cloud extras 补装、pytest pythonpath 补
+  仓库根——首跑三连红转绿
+
 ## 2026-08-30 · 人类可读报告生成器:report.md 全结构渲染
 
 - **report.md 人类可读报告**(`report_markdown.py`):report 阶段在
