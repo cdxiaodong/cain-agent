@@ -20,6 +20,7 @@ from cain_agent.findings import Finding, FindingResult, Severity, fingerprint
 from cain_agent.handlers import (
     RECON_ENDPOINTS_FILE,
     RECON_RAW_FILE,
+    RECON_STATUS_FILE,
     TEST_RAW_FILE,
     SkillLoader,
     make_recon_handler,
@@ -136,7 +137,7 @@ def test_recon_handler_artifacts_structure(ws: Workspace) -> None:
     handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
     result = handler(_ctx(ws, "recon"))
 
-    assert result.artifacts == [RECON_ENDPOINTS_FILE, RECON_RAW_FILE]
+    assert result.artifacts == [RECON_ENDPOINTS_FILE, RECON_RAW_FILE, RECON_STATUS_FILE]
     endpoints = json.loads((ws.root / RECON_ENDPOINTS_FILE).read_text(encoding="utf-8"))
     assert len(endpoints) == 2, "非法条目(缺 url)应被跳过"
     assert endpoints[0]["url"] == "http://example.com/login"
@@ -183,6 +184,125 @@ def test_recon_handler_idempotent_overwrite(ws: Workspace) -> None:
     handler(_ctx(ws, "recon"))
     second = (ws.root / RECON_ENDPOINTS_FILE).read_text(encoding="utf-8")
     assert first == second, "重跑覆盖同名产物,内容一致不膨胀"
+
+
+# -- recon output parsing robustness (regression: prose / fences / multiple ---
+# -- JSON blobs must not collapse a valid final object into recon_invalid) ----
+
+_RECON_SCHEMA_JSON = json.dumps(
+    {"endpoints": [{"url": "http://example.com/login", "method": "GET"}]},
+    ensure_ascii=False,
+)
+
+
+def _assert_recon_status_valid_single_endpoint(ws: Workspace, result: object) -> None:
+    status = json.loads((ws.root / RECON_STATUS_FILE).read_text(encoding="utf-8"))
+    assert status["status"] == "valid"
+    assert status["structural_errors"] == []
+    assert status["endpoint_count"] == 1
+    assert result.data["status"] == "valid"  # type: ignore[attr-defined]
+    endpoints = json.loads((ws.root / RECON_ENDPOINTS_FILE).read_text(encoding="utf-8"))
+    assert endpoints == [{"url": "http://example.com/login", "method": "GET"}]
+
+
+def test_recon_handler_parses_clean_json(ws: Workspace) -> None:
+    executor = FakeExecutor(_RECON_SCHEMA_JSON)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_parses_fenced_json(ws: Workspace) -> None:
+    output = f"```json\n{_RECON_SCHEMA_JSON}\n```"
+    executor = FakeExecutor(output)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_parses_json_after_prose(ws: Workspace) -> None:
+    output = (
+        "我先侦察了一下目标,发现了一个可测端点,分析过程省略。\n"
+        "以下是结构化结果:\n\n"
+        f"{_RECON_SCHEMA_JSON}\n\n"
+        "以上就是本轮侦察结果。"
+    )
+    executor = FakeExecutor(output)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_recovers_after_malformed_first_attempt(ws: Workspace) -> None:
+    """First attempt has a trailing comma (invalid JSON); the model then emits
+    a corrected, schema-valid object. The corrected one must win."""
+    malformed = '{"endpoints": [{"url": "http://example.com/login",}]}'
+    output = f"{malformed}\n上面的 JSON 有语法错误,修正一下:\n\n{_RECON_SCHEMA_JSON}"
+    executor = FakeExecutor(output)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_selects_final_schema_valid_object_among_several(ws: Workspace) -> None:
+    """Multiple *valid* JSON objects appear; only the final one matches the
+    recon schema ({"endpoints": [...]})  — an earlier, off-schema-but-valid
+    blob must never be silently accepted as the canonical artifact."""
+    stray = json.dumps({"note": "只是草稿备注,不是端点schema"}, ensure_ascii=False)
+    output = f"草稿备注:\n{stray}\n\n最终结果:\n{_RECON_SCHEMA_JSON}"
+    executor = FakeExecutor(output)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_selects_final_of_multiple_schema_valid_objects(ws: Workspace) -> None:
+    """Two objects both match the recon schema; the *final* one is canonical."""
+    first_attempt = json.dumps(
+        {"endpoints": [{"url": "http://example.com/old-draft"}]}, ensure_ascii=False
+    )
+    output = f"第一次尝试:\n{first_attempt}\n\n修正后:\n{_RECON_SCHEMA_JSON}"
+    executor = FakeExecutor(output)
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+    _assert_recon_status_valid_single_endpoint(ws, result)
+
+
+def test_recon_handler_completely_invalid_output_is_recon_invalid(ws: Workspace) -> None:
+    executor = FakeExecutor("完全没有结构化输出,只有一段自然语言描述,没有任何 JSON。")
+    handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
+    result = handler(_ctx(ws, "recon"))
+
+    status = json.loads((ws.root / RECON_STATUS_FILE).read_text(encoding="utf-8"))
+    assert status["status"] == "recon_invalid"
+    assert status["structural_errors"] == ["json_parse_failed"]
+    assert status["endpoint_count"] == 0
+    assert result.data["status"] == "recon_invalid"
+    endpoints = json.loads((ws.root / RECON_ENDPOINTS_FILE).read_text(encoding="utf-8"))
+    assert endpoints == []
+
+
+def test_recon_to_test_pipeline_survives_prose_and_multiple_json_blobs(ws: Workspace) -> None:
+    """End-to-end regression for the reported bug: recon agent returns prose
+    plus more than one JSON object; the final object is valid and contains
+    endpoints. This must not produce recon_invalid/endpoint_count 0, and the
+    test stage must actually run against the recovered endpoints."""
+    draft = json.dumps({"endpoints": [{"url": "http://example.com/draft"}]}, ensure_ascii=False)
+    recon_output = (
+        "让我先分析一下目标站点的结构……\n"
+        f"初步草稿:\n{draft}\n\n"
+        "重新核对后,最终结果如下:\n\n"
+        f"{_RECON_SCHEMA_JSON}\n"
+    )
+    recon_handler = make_recon_handler(FakeExecutor(recon_output), SkillLoader(SKILLS_ROOT))
+    recon_result = recon_handler(_ctx(ws, "recon"))
+    assert recon_result.data["status"] == "valid"
+    assert recon_result.data["endpoint_count"] == 1
+
+    test_executor = FakeExecutor('{"findings": []}')
+    test_result = make_test_handler(test_executor, SkillLoader(SKILLS_ROOT))(_ctx(ws, "test"))
+    assert test_result.data.get("status") != "recon_invalid"
+    assert len(test_executor.prompts) == 1, "test stage must actually run once recon is valid"
 
 
 # -- test handler -------------------------------------------------------------

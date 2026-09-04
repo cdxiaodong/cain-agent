@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from cain_agent.executor import ExecutorResult, SDKExecutor
+from cain_agent.executor import ExecutorResult, SDKExecutor, ToolCallRecord, complete_tool_call
 from cain_agent.findings import (
     Finding,
     FindingResult,
@@ -47,16 +47,29 @@ def _workspace(tmp_path: Path) -> Workspace:
 
 
 def _finding() -> Finding:
+    evidence_hash = hash_evidence("response differs")
     return Finding(
         finding_id="f-sqli",
         result=FindingResult.VALIDATION_INCONCLUSIVE,
         severity=Severity.HIGH,
-        evidence_hash=hash_evidence("response differs"),
+        evidence_hash=evidence_hash,
         reason="疑似注入点",
         cloud="web",
         service="http",
         resource="http://example.com/login?id=1",
         issue_type="sqli",
+        provenance={
+            "request_id": "tool-1",
+            "url": "http://example.com/login?id=1",
+            "host": "example.com",
+            "method": "GET",
+            "timestamp": "2026-09-04T00:00:00+00:00",
+            "status_code": 200,
+            "response_hash": hash_evidence("HTTP/1.1 200 OK"),
+            "evidence_request_id": "tool-1",
+            "evidence_hash": evidence_hash,
+            "executed": True,
+        },
     )
 
 
@@ -121,7 +134,7 @@ def test_report_aggregates_manager_solver_pool_and_memory(tmp_path: Path) -> Non
 
 
 def _canned_response(prompt: str) -> str:
-    if "侦察 Agent" in prompt:
+    if "侦察 Agent" in prompt or "reconnaissance agent" in prompt:
         return json.dumps({
             "endpoints": [
                 {
@@ -131,7 +144,7 @@ def _canned_response(prompt: str) -> str:
                 }
             ]
         })
-    if "测试 Agent" in prompt:
+    if "测试 Agent" in prompt or "testing agent" in prompt:
         return json.dumps({
             "findings": [
                 {
@@ -157,7 +170,16 @@ class FakeExecutor:
 
     async def run(self, prompt: str) -> ExecutorResult:
         self.prompts.append(prompt)
-        return ExecutorResult(text=_canned_response(prompt))
+        result = ExecutorResult(text=_canned_response(prompt))
+        if "testing agent" in prompt or "测试 Agent" in prompt:
+            call = ToolCallRecord(
+                tool_use_id="fake-request-1",
+                name="Bash",
+                input={"command": "curl -i 'http://127.0.0.1:8080/login?id=1'"},
+            )
+            complete_tool_call(call, "HTTP/1.1 200 OK\n\nresponse differs", succeeded=True)
+            result.tool_calls.append(call)
+        return result
 
 
 def _mock_cli_executors(monkeypatch: Any) -> list[FakeExecutor]:

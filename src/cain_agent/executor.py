@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from claude_agent_sdk import (
@@ -28,7 +31,9 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     query,
 )
 from claude_agent_sdk.types import HookEvent
@@ -50,6 +55,40 @@ class ToolCallRecord:
     tool_use_id: str
     name: str
     input: dict[str, Any]
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(UTC).isoformat(timespec="seconds")
+    )
+    completed: bool = False
+    succeeded: bool = False
+    response_hash: str | None = None
+    status_code: int | None = None
+
+
+_HTTP_STATUS_RE = re.compile(r"(?im)^HTTP/\S+\s+(\d{3})\b|(?:^|\D)([1-5]\d{2})(?:\D|$)")
+
+
+def _tool_output_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "\n".join(parts)
+    return ""
+
+
+def complete_tool_call(record: ToolCallRecord, output: object, *, succeeded: bool) -> None:
+    """Attach non-secret execution facts to a tool call without persisting response text."""
+    text = _tool_output_text(output)
+    record.completed = True
+    record.succeeded = succeeded
+    record.response_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+    matches = list(_HTTP_STATUS_RE.finditer(text))
+    if matches:
+        raw = matches[-1].group(1) or matches[-1].group(2)
+        record.status_code = int(raw)
 
 
 @dataclass
@@ -177,6 +216,15 @@ class SDKExecutor:
                         elif isinstance(block, ToolUseBlock):
                             result.tool_calls.append(
                                 ToolCallRecord(tool_use_id=block.id, name=block.name, input=block.input)
+                            )
+                elif isinstance(message, UserMessage) and isinstance(message.content, list):
+                    by_id = {call.tool_use_id: call for call in result.tool_calls}
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock) and block.tool_use_id in by_id:
+                            complete_tool_call(
+                                by_id[block.tool_use_id],
+                                block.content,
+                                succeeded=not bool(block.is_error),
                             )
                 elif isinstance(message, SystemMessage):
                     if message.subtype == "init":
