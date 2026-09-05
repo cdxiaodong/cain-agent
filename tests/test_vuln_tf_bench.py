@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from bench.run_benchmark import run_vuln_tf_benchmark
@@ -71,6 +73,29 @@ def test_benchmark_entrypoint_full_metrics(tmp_path: Path) -> None:
     assert "vuln-tf" in text
     assert "100.0%" in text  # recall
     assert "1.000" in text   # F1 满分
+
+
+def test_benchmark_cli_script_entrypoint(tmp_path: Path) -> None:
+    """README 中的脚本调用方式应能从仓库根目录直接执行。"""
+    output = tmp_path / "report.md"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "bench/run_benchmark.py",
+            "--suite",
+            "vuln-tf",
+            "--output",
+            str(output),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert f"报告已生成: {output}" in completed.stdout
+    report = output.read_text(encoding="utf-8")
+    assert "总场景数 | 3" in report
+    assert "检出率（Recall） | 100.0%" in report
+    assert "平均 token 成本 | 0" in report
 
 
 def test_run_scenario_isolated_expectation_failure_counted() -> None:
