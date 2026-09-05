@@ -296,7 +296,10 @@ def run_vuln_tf_benchmark(output_path: Path) -> BenchmarkResult:
 
     token 恒为 0:纯静态文本分析,无 LLM 调用(如实统计,不模拟)。
     """
-    from bench.vuln_tf_static import run_all
+    if __package__:
+        from .vuln_tf_static import run_all
+    else:
+        from vuln_tf_static import run_all
 
     results = run_all()
     total = len(results)
