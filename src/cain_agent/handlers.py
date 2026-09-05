@@ -33,6 +33,7 @@ from typing import Any
 
 import yaml
 
+from cain_agent._jsonspans import iter_json_spans
 from cain_agent.executor import ExecutorResult, SDKExecutor
 from cain_agent.findings import (
     REASON_MAX_LEN,
@@ -164,7 +165,13 @@ def _run_sync(executor: SDKExecutor, prompt: str) -> ExecutorResult:
 
 
 def _extract_json(text: str) -> Any | None:
-    """从模型输出提取 JSON(对象或数组);先整体解析,失败再取最外层括号切片。"""
+    """从模型输出提取 JSON(对象或数组);取最后一个可解析的顶层 span。
+
+    整体就是合法 JSON 时直接返回;否则扫描全部括号平衡 span,取**最后一个**
+    能 ``json.loads`` 的 —— 模型在终稿前裹散文/markdown 围栏/写坏的草稿对象
+    时,终稿(在末尾)胜出(issue #9:naive 首-``{``/末-``}`` 切片会把这类
+    输出判成解析失败,造成 ``recon_invalid`` 假阳性)。
+    """
     text = text.strip()
     if not text:
         return None
@@ -172,18 +179,13 @@ def _extract_json(text: str) -> Any | None:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    # 模型在 JSON 前后裹了散文:按最外层 {}/[] 切片重试。
-    candidates = [("{", "}"), ("[", "]")]
-    for opener, closer in candidates:
-        start = text.find(opener)
-        end = text.rfind(closer)
-        if start == -1 or end <= start:
-            continue
+    result: Any = None
+    for span in iter_json_spans(text):
         try:
-            return json.loads(text[start : end + 1])
+            result = json.loads(span)
         except json.JSONDecodeError:
             continue
-    return None
+    return result
 
 
 def _truncate_reason(reason: str) -> str:
@@ -326,6 +328,7 @@ def make_recon_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stag
             caveats.append(f"执行出错({result.error}),产物可能不完整")
         if payload is None:
             caveats.append("Agent 输出未解析出 JSON,endpoints 置空")
+        caveats.extend(skill_loader.issues)  # 技能加载降级原因随产物可见(issue #9)
         summary = f"recon 完成: 提取端点 {len(endpoints)} 个,跳过非法条目 {skipped} 条"
         if caveats:
             summary += ";" + ";".join(caveats)
@@ -506,6 +509,7 @@ def make_test_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stage
             caveats.append(f"执行出错({result.error}),产物可能不完整")
         if payload is None:
             caveats.append("Agent 输出未解析出 JSON,本轮无新增发现")
+        caveats.extend(skill_loader.issues)  # 技能加载降级原因随产物可见(issue #9)
         summary = (
             f"test 完成: 新增/更新发现 {len(new_findings)} 条,"
             f"findings.json 共 {len(merged)} 条,跳过非法条目 {skipped} 条"

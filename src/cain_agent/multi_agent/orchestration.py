@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cain_agent._jsonspans import iter_json_spans
 from cain_agent.executor import SDKExecutor
 from cain_agent.findings import (
     Finding as PipelineFinding,
@@ -70,15 +71,19 @@ def _extract_json(text: str) -> dict[str, Any] | None:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end <= start:
-            return None
+        payload = None
+    if isinstance(payload, dict):
+        return payload
+    # 散文/围栏/多对象(草稿+终稿):取最后一个可解析且为 dict 的顶层 span(issue #9)。
+    result: dict[str, Any] | None = None
+    for span in iter_json_spans(text):
         try:
-            payload = json.loads(text[start : end + 1])
+            candidate = json.loads(span)
         except json.JSONDecodeError:
-            return None
-    return payload if isinstance(payload, dict) else None
+            continue
+        if isinstance(candidate, dict):
+            result = candidate
+    return result
 
 
 class ExecutorVerificationSession(VerificationSession):
