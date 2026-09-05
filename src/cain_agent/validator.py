@@ -27,6 +27,7 @@ import json
 from dataclasses import replace
 from typing import Any
 
+from cain_agent._jsonspans import iter_json_spans
 from cain_agent.executor import SDKExecutor
 from cain_agent.findings import (
     REASON_MAX_LEN,
@@ -66,22 +67,29 @@ def _truncate_reason(reason: str) -> str:
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """从模型输出中提取 JSON 对象;先整体解析,失败再取首尾花括号切片。"""
+    """从模型输出中提取 JSON 对象;取最后一个可解析且为 dict 的顶层 span。
+
+    多对象输出(草稿+终稿)取末尾终稿;散文/围栏/写坏草稿不再导致整体
+    解析失败(issue #9)。
+    """
     text = text.strip()
     if not text:
         return None
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end <= start:
-            return None
+        data = None
+    if isinstance(data, dict):
+        return data
+    result: dict[str, Any] | None = None
+    for span in iter_json_spans(text):
         try:
-            data = json.loads(text[start : end + 1])
+            candidate = json.loads(span)
         except json.JSONDecodeError:
-            return None
-    return data if isinstance(data, dict) else None
+            continue
+        if isinstance(candidate, dict):
+            result = candidate
+    return result
 
 
 def _coerce_suggested(value: object) -> Severity | None:

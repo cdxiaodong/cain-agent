@@ -334,3 +334,21 @@ def test_test_output_redacted_before_disk(ws: Workspace) -> None:
     assert "<REDACTED:aliyun_ak:" in raw
     assert _FAKE_AK not in findings_text, "证据只哈希落盘,明文(含凭证样式串)不落 findings.json"
     assert result.data["new_findings"] == 1
+
+
+def test_skill_loader_issues_surfaced_in_caveats(ws: Workspace, tmp_path: Path) -> None:
+    """SkillLoader.issues 不再 write-only:技能目录缺失时降级原因进 caveats(issue #9)。"""
+    broken_loader = SkillLoader(tmp_path / "no-such-skills")
+    executor = FakeExecutor(_RECON_OUTPUT)
+    result = make_recon_handler(executor, broken_loader)(_ctx(ws, "recon"))
+    caveats = result.data["caveats"]
+    assert any("技能目录缺失" in c for c in caveats)
+    assert "技能目录缺失" in result.summary, "summary 也应可见"
+
+
+def test_test_handler_skill_issues_surfaced(ws: Workspace, tmp_path: Path) -> None:
+    _seed_recon_endpoints(ws)
+    broken_loader = SkillLoader(tmp_path / "no-such-skills")
+    executor = FakeExecutor(_TEST_OUTPUT)
+    result = make_test_handler(executor, broken_loader)(_ctx(ws, "test"))
+    assert any("技能目录缺失" in c for c in result.data["caveats"])
