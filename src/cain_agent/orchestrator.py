@@ -165,11 +165,30 @@ class Orchestrator:
             artifacts_dir=self.workspace.stage_dir(stage),
         )
         started_at = _utc_now_iso()
-        result = self.handlers[stage](ctx)
+        history: list[dict[str, Any]] = list(state.get("history", []))
+        try:
+            result = self.handlers[stage](ctx)
+        except Exception as exc:
+            failed_at = _utc_now_iso()
+            history.append({
+                "stage": stage,
+                "started_at": started_at,
+                "finished_at": failed_at,
+                "status": "failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            self._save_state({
+                "current_stage": stage,
+                "completed_stages": completed,
+                "updated_at": failed_at,
+                "history": history,
+                "failed_stage": stage,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            raise
         finished_at = _utc_now_iso()
 
         completed.append(stage)
-        history: list[dict[str, Any]] = list(state.get("history", []))
         history.append({
             "stage": stage,
             "started_at": started_at,
