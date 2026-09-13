@@ -170,3 +170,101 @@ def test_denied_status_configurable() -> None:
     assert v.kind is Kind.NONE  # 403 非 2xx,不构成成功读
     assert "防护在位" not in v.rationale  # 配置生效:不再按拒绝短路
     assert "非成功状态" in v.rationale
+
+
+# -- 09-09 任务1:BAC 判定核心证据前置检查(钉死三缺陷复现) --------------------
+
+
+def _same_account_pair() -> RequestPair:
+    """同账号重放:object_owner == replay_as,不构成跨账号前提。"""
+    return RequestPair(
+        method_a="GET",
+        url_a="https://app.example.com/api/orders/1001",
+        method_b="GET",
+        url_b="https://app.example.com/api/orders/1001",
+        object_owner="alice",
+        replay_as="alice",
+    )
+
+
+def test_same_account_replay_not_horizontal() -> None:
+    """缺陷钉死:同账号 200+归属匹配不得判已成立水平越权(此前 0.85 误报)。"""
+    v = judge_bac(_same_account_pair(), ResponseDiff(200, 200, True, 0.93))
+    assert v.kind is Kind.NONE
+    assert "同账号" in v.rationale or "相同" in v.rationale
+
+
+def test_missing_owner_identity_not_horizontal() -> None:
+    """归属身份缺失:读越权前提不成立。"""
+    pair = RequestPair("GET", "u", "GET", "u", "", "bob")
+    v = judge_bac(pair, ResponseDiff(200, 200, True, 0.9))
+    assert v.kind is Kind.NONE
+    assert "缺失" in v.rationale
+
+
+def test_missing_replay_identity_rejected_before_anything() -> None:
+    """重放者身份缺失:最先拒绝,任何越权结论失去前提。"""
+    pair = RequestPair("GET", "u", "GET", "u", "alice", "")
+    v = judge_bac(pair, ResponseDiff(200, 200, True, 0.9))
+    assert v.kind is Kind.NONE
+    assert "replay_as 为空" in v.rationale
+
+
+def test_nan_similarity_rejected_explicitly() -> None:
+    """NaN 相似度:显式 ValueError,不得产出任何置信结论(此前出 0.5 结论)。"""
+    pair = RequestPair("GET", "u", "GET", "u", "alice", "bob")
+    try:
+        judge_bac(pair, ResponseDiff(200, 200, True, float("nan")))
+    except ValueError as e:
+        assert "content_similarity" in str(e)
+    else:
+        raise AssertionError("NaN 相似度必须显式拒绝")
+
+
+def test_inf_and_out_of_range_rejected() -> None:
+    import math
+    pair = RequestPair("GET", "u", "GET", "u", "alice", "bob")
+    for bad in (math.inf, -math.inf, -0.1, 1.5):
+        try:
+            judge_bac(pair, ResponseDiff(200, 200, True, bad))
+        except ValueError:
+            continue
+        raise AssertionError(f"非法相似度 {bad} 必须显式拒绝")
+
+
+def test_invalid_threshold_rejected() -> None:
+    import math
+    pair = RequestPair("GET", "u", "GET", "u", "alice", "bob")
+    for bad in (float("nan"), math.inf, 0.0, 1.5, -0.2):
+        try:
+            judge_bac(pair, ResponseDiff(200, 200, True, 0.8), BACConfig(similarity_threshold=bad))
+        except ValueError:
+            continue
+        raise AssertionError(f"非法阈值 {bad} 必须显式拒绝")
+
+
+def test_denied_but_victim_changed_is_conflict_not_protection() -> None:
+    """403 + 依赖页 INSERT:冲突证据,不得短路为「防护在位」none(此前被吞)。"""
+    pair = RequestPair("POST", "u", "POST", "u", "alice", "bob")
+    v = judge_bac(pair, ResponseDiff(200, 403, False, 0.0, VictimSideChange.NEW_TOKEN))
+    assert v.mbac and v.kind is Kind.HORIZONTAL
+    assert "冲突证据" in v.rationale
+    assert "人工复核" in v.rationale
+    assert v.confidence <= 0.55
+
+
+def test_mbac_same_account_excluded() -> None:
+    """同账号 + 依赖页变化:不构成跨账号越权写。"""
+    pair = RequestPair("POST", "u", "POST", "u", "alice", "alice")
+    v = judge_bac(pair, ResponseDiff(200, 200, False, 0.0, VictimSideChange.TOKEN_GONE))
+    assert v.kind is Kind.NONE and not v.mbac
+    assert "人工核验归属" in v.rationale
+
+
+def test_cross_account_still_detected_regression() -> None:
+    """回归:正常跨账号对照判定不受前置检查影响。"""
+    pair = RequestPair("GET", "u", "GET", "u", "alice", "bob")
+    v = judge_bac(pair, ResponseDiff(200, 200, True, 0.93))
+    assert v.kind is Kind.HORIZONTAL and v.confidence >= 0.8
+    denied = judge_bac(pair, ResponseDiff(200, 403, False, 0.0))
+    assert denied.kind is Kind.NONE and "防护在位" in denied.rationale
