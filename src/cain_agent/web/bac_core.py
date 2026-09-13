@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -104,33 +105,65 @@ def judge_bac(pair: RequestPair, diff: ResponseDiff, config: BACConfig | None = 
 
     判定序(证据从硬到软):
 
-    1. B 被拒(401/403)→ 防护在位,``none``;
-    2. Victim 依赖页变化(MBAC 证据,以效果为准)→ **MBAC 成立**,归属
-       ``horizontal`` + ``mbac=True``;读方法触发的异常场景降置信并要求
-       人工复核;
-    3. 读方法 + B 200 + 归属字段指向原属主 → 读到他人私有数据,
+    0. 数值非法(similarity/阈值 NaN、Inf、越界)→ 显式 ``ValueError``,
+       拒绝产生任何结论;
+    1. 重放者身份缺失 → ``none``;
+    2. Victim 依赖页变化(MBAC 证据,以效果为准,先于拒绝状态码)→
+       **MBAC 成立**,归属 ``horizontal`` + ``mbac=True``;归属缺失/同账号
+       排除;拒绝状态码与之并存属冲突证据,降置信并要求人工复核;读方法
+       触发的异常场景降置信;
+    3. B 被拒(401/403)且依赖页无变化 → 防护在位,``none``;
+    4. 同账号/归属缺失 → ``none``(防同账号重放误报);
+    5. 读方法 + B 2xx + 归属字段指向原属主 → 读到他人私有数据,
        ``horizontal``;相似度 ≥ 阈值增强置信,灰区降置信并提示人工核验;
-    4. 特权动作 + B 角色更低 + B 200 → ``vertical``;
-    5. 其余(读到共享/自身资源、内容完全不同、非 2xx)→ ``none``。
+    6. 特权动作 + B 角色更低 + B 200 → ``vertical``;
+    7. 其余(读到共享/自身资源、内容完全不同、非 2xx)→ ``none``。
     """
     cfg = config or BACConfig()
     method = pair.method_b.upper()
     is_write = method not in _READ_METHODS  # 仅用于读分支的排除,MBAC 以效果为准
     reasons: list[str] = []
 
-    # 1) 拒绝类状态码:防护在位
-    if diff.status_b in cfg.forbidden_status:
-        return BACVerdict(
-            kind=Kind.NONE,
-            confidence=0.9,
-            rationale=f"B 重放被拒(status={diff.status_b}),鉴权防护在位",
+    # 0) 数值显式校验:非法输入拒绝产生任何结论(issue #9 同源缺陷类)
+    if not math.isfinite(diff.content_similarity) or not 0.0 <= diff.content_similarity <= 1.0:
+        raise ValueError(
+            f"content_similarity 非法: {diff.content_similarity!r}(须为 [0,1] 内有限数)"
+        )
+    if not math.isfinite(cfg.similarity_threshold) or not 0.0 < cfg.similarity_threshold <= 1.0:
+        raise ValueError(
+            f"similarity_threshold 非法: {cfg.similarity_threshold!r}(须为 (0,1] 内有限数)"
         )
 
-    # 2) MBAC:以 Victim 依赖页变化为准(直接响应不可靠);方法仅影响置信
+    # 1) 身份前置检查:重放者身份缺失,任何越权结论都失去跨账号前提
+    if not pair.replay_as:
+        return BACVerdict(
+            kind=Kind.NONE,
+            confidence=0.5,
+            rationale="replay_as 为空:重放者身份缺失,无法构成跨账号越权证据",
+        )
+
+    # 2) MBAC:以 Victim 依赖页变化为准(直接响应不可靠),先于拒绝状态码——
+    #    依赖页变化是比状态码更硬的写效果证据;拒绝状态码与之并存属冲突证据
     if diff.victim_side_change is not VictimSideChange.NONE:
         change = diff.victim_side_change
+        if not pair.object_owner or pair.object_owner == pair.replay_as:
+            return BACVerdict(
+                kind=Kind.NONE,
+                confidence=0.6,
+                rationale=(
+                    "Victim 依赖页有变化,但资源归属身份缺失或与重放者相同,"
+                    "不构成跨账号越权写(须人工核验归属)"
+                ),
+                victim_side_change=change,
+            )
         is_read = method in _READ_METHODS
         confidence = 0.75 if not is_read else 0.5
+        if diff.status_b in cfg.forbidden_status:
+            confidence = min(confidence, 0.55)
+            reasons.append(
+                f"冲突证据:响应被拒(status={diff.status_b})但依赖页发生"
+                f"{change.value} 变化——写效果已发生,不能仅凭状态码称防护在位,须人工复核"
+            )
         if is_read:
             reasons.append("GET/HEAD 触发修改属异常场景,须人工复核(降置信)")
         reasons.append(
@@ -145,7 +178,32 @@ def judge_bac(pair: RequestPair, diff: ResponseDiff, config: BACConfig | None = 
             victim_side_change=change,
         )
 
-    # 3) RBAC 读越权:B 2xx 且归属字段仍指向原属主
+    # 3) 拒绝类状态码:防护在位(依赖页无变化时状态码才是充分证据)
+    if diff.status_b in cfg.forbidden_status:
+        return BACVerdict(
+            kind=Kind.NONE,
+            confidence=0.9,
+            rationale=f"B 重放被拒(status={diff.status_b}),鉴权防护在位",
+        )
+
+    # 4) 同账号/归属缺失排除:读越权前提是资源明确归属他人
+    if not pair.object_owner or pair.object_owner == pair.replay_as:
+        if _is_success(diff.status_b) and not diff.owner_fields_match:
+            return BACVerdict(
+                kind=Kind.NONE,
+                confidence=0.6,
+                rationale="B 响应归属字段不指向原属主(共享资源或自身资源,排除越权)",
+            )
+        return BACVerdict(
+            kind=Kind.NONE,
+            confidence=0.6,
+            rationale=(
+                "资源归属身份缺失或与重放者相同,不构成跨账号读越权"
+                "(共享/自身资源排除,防同账号重放误报)"
+            ),
+        )
+
+    # 5) RBAC 读越权:B 2xx 且归属字段仍指向原属主
     if not is_write and _is_success(diff.status_b) and diff.owner_fields_match:
         confidence = 0.7
         if diff.content_similarity >= cfg.similarity_threshold:
@@ -175,7 +233,7 @@ def judge_bac(pair: RequestPair, diff: ResponseDiff, config: BACConfig | None = 
             rationale=";".join(reasons),
         )
 
-    # 4) 垂直越权:特权动作 + 角色更低 + B 仍成功
+    # 6) 垂直越权:特权动作 + 角色更低 + B 仍成功
     if (
         pair.is_privileged_action
         and pair.replay_role_lower
@@ -190,7 +248,7 @@ def judge_bac(pair: RequestPair, diff: ResponseDiff, config: BACConfig | None = 
             ),
         )
 
-    # 5) 未构成越权
+    # 7) 未构成越权
     if _is_success(diff.status_b) and not diff.owner_fields_match:
         reason = "B 响应归属字段不指向原属主(共享资源或自身资源,排除越权)"
     elif not _is_success(diff.status_b):
