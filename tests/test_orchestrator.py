@@ -27,7 +27,7 @@ from cain_agent.orchestrator import (
     StageOrderError,
     StageResult,
 )
-from cain_agent.workspace import Workspace
+from cain_agent.workspace import STATE_FILE, Workspace
 
 
 @pytest.fixture
@@ -170,3 +170,47 @@ def test_artifacts_landed_in_stage_dirs(ws: Workspace) -> None:
     orch.run()
     for stage in STAGES:
         assert (ws.root / stage / f"{stage}-placeholder.json").exists()
+
+
+def _raising_handler(error: Exception) -> StageHandler:
+    def handler(ctx: StageContext) -> StageResult:
+        raise error
+
+    return handler
+
+
+def test_failed_stage_is_recorded_in_state(ws: Workspace) -> None:
+    orch = Orchestrator(
+        SDKExecutor(), ws, handlers={"recon": _raising_handler(RuntimeError("recon blew up"))}
+    )
+    with pytest.raises(RuntimeError, match="recon blew up"):
+        orch.run_stage("recon")
+    state = orch.load_state()
+    assert state["failed_stage"] == "recon"
+    assert "recon blew up" in state["error"]
+    assert state["completed_stages"] == []
+    assert state["current_stage"] == "recon"
+    assert state["history"][-1]["status"] == "failed"
+    assert ws.path(STATE_FILE).exists()
+
+
+def test_run_records_state_when_a_handler_raises(ws: Workspace) -> None:
+    orch = Orchestrator(
+        SDKExecutor(), ws, handlers={"recon": _raising_handler(RuntimeError("recon blew up"))}
+    )
+    with pytest.raises(RuntimeError):
+        orch.run()
+    assert orch.load_state()["failed_stage"] == "recon"
+
+
+def test_failure_marker_is_cleared_after_a_successful_stage(ws: Workspace) -> None:
+    orch = Orchestrator(
+        SDKExecutor(), ws, handlers={"recon": _raising_handler(RuntimeError("recon blew up"))}
+    )
+    with pytest.raises(RuntimeError, match="recon blew up"):
+        orch.run_stage("recon")
+    orch2 = Orchestrator(SDKExecutor(), ws)
+    orch2.run_stage("recon")
+    state = orch2.load_state()
+    assert state["completed_stages"] == ["recon"]
+    assert "failed_stage" not in state
