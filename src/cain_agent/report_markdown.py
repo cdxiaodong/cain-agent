@@ -404,7 +404,10 @@ def _render_evidence_index(report: dict[str, Any]) -> list[str]:
         "| finding_id | 证据哈希 |",
         "|---|---|",
     ]
-    for conclusion in conclusions:
+    # 与表格/详情同序(severity 定级序+置信度降序)——索引顺序即溯源顺序,
+    # 修复 2026-09-13 记录性发现(此前按输入序,与表格/详情不一致)。
+    ordered = sorted(conclusions, key=_conclusion_sort_key)
+    for conclusion in ordered:
         lines.append(
             f"| {_escape_cell(conclusion.get('finding_id', '?'))} "
             f"| `{conclusion.get('evidence_hash', '?')}` |"
