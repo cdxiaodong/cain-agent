@@ -222,13 +222,12 @@ def test_render_is_deterministic_for_same_input() -> None:
 def test_known_inconsistency_evidence_index_follows_input_order() -> None:
     """记录性断言:证据索引节按输入序渲染,不与表格/详情的定级排序对齐。
 
-    现状(2026-09-13 记录,report_markdown.py _render_evidence_index 无
-    sorted):输入 [unknown, known] 时表格节 HIGH 在 ULTRA 前,而证据
-    索引仍 f-unknown 在前。属显示一致性小问题,非信任边界缺陷;按派活单
-    「发现缺陷仅记录定位,不改实现」钉死现状,修复后本断言应反转。
+    2026-09-14 修复(fix/2026-09-14-evidence-index-sort):索引渲染接入
+    sorted(_conclusion_sort_key),与表格/详情同序;本断言已按 done 汇报
+    预告反转。
     """
     known = _conclusion(severity="high", finding_id="f-known")
     unknown = _conclusion(severity="ultra", finding_id="f-unknown")
     md = render_report_markdown(_report([unknown, known]), _META)
     assert md.find("HIGH") < md.find("ULTRA")  # 表格节:定级排序在位
-    assert md.find("f-unknown") < md.find("f-known")  # 索引节:输入序(现状)
+    assert md.find("f-known") < md.find("f-unknown")  # 索引节:已对齐定级排序(2026-09-14 修复)
