@@ -88,3 +88,59 @@
 
 - [ ] 按数据补短板;2027.07 前确认 fork ≥ 200 → 提交人才认定申请
 - [ ] Plan B 触发线:2027.04 fork < 80 时切换策略
+
+## Phase 5 · 攻防经验吸收(2026.09 起,分 A-E 子阶段逐期开发)
+
+> 来源:2026-09 对业界顶级攻防研究方法论的系统研读与提炼(九条经验,
+> 内部参考档案留存);全部条目匿名化表述,落地延续「监工领取制+最小
+> 切片+先钉死后修+三门全绿」产线模式,每子阶段 1-2 个派活单。
+
+### 5-A · 验证纪律强化(先行,纯代码零依赖)
+
+- [ ] A1 覆盖率退出门:recon 退出由代码校验(endpoints 数/探测计数阈值),
+  不达标 caveats 标记 + state 门控,test 读 blocked 门降级 dry-run;
+  新增 `src/cain_agent/gates.py` 纯函数 `check_coverage`
+- [ ] A2 可重放证据包:findings 增可选 `replay` 字段(泛化
+  web/bac_evidence 结构,method/url/参数白名单键不含值);
+  report.md 增「重放清单」节(证据原文照旧只哈希)
+- [ ] A3 confirm 副作用门:validator 增 `side_effect_evidence`,
+  无副作用证据的 confirmed 降级新状态 `likely`(第五状态),
+  验证池表决取保守,聚合与 report 同步
+- [ ] A4 分歧呈现:findings 增 `model_dissent`(验证池反对票理由,
+  只含依据不含凭证),report.md 详情节呈现分歧子块
+
+### 5-B · 上下文工程
+
+- [ ] B1 patterns 蒸馏格式 + 首批:`skills/patterns.jsonl` 五字段假设
+  (target_kind/invariant/violation/verify_method/confidence_prior)+
+  校验器 `src/cain_agent/patternlib.py`;从既有 web 技能蒸馏 ≥20 条
+- [ ] B2 Scout 假设生成:recon→test 间纯规则匹配(零 token)产定点
+  假设清单替代全量技能注入;`--scout off` 回落旧行为(缺省零变化)
+- [ ] B3 技能 validation_seed 质量门:技能 frontmatter 增已知漏洞
+  样例集,加载时校验 seed 自洽,缺失/空章节进 issues;bench 增
+  seed 复现跑分入口
+
+### 5-C · patchdiff 变体挖掘(依赖 5-B 格式)
+
+- [ ] C1 补丁 diff 解析层:`src/cain_agent/patchdiff/parser.py`,
+  unified diff → 结构化变更集(签名变化/新增校验/删除路径),纯函数
+- [ ] C2 根因谓词蒸馏:变更集 → invariant 谓词(复用 B1 五字段格式),
+  LLM 辅助 prompt 模板 + 确定性校验(谓词须引用 diff 实际符号)
+- [ ] C3 变体搜索接线:test 阶段按谓词定点打击(复用 B2 Scout 通道)
+- [ ] C4 蒸馏反哺:谓词 → 技能文档骨架生成器(人审后入库)
+
+### 5-D · BAC 主线 + 组合链(D1 已在任务池)
+
+- [ ] D1 bac_replay 构造器(09-14 派活单任务2,顺延有效)
+- [ ] D2 弱原语组合链框架:`src/cain_agent/web/chain_graph.py`,
+  三段式建模(原语+放大器+落地)图搜索组链,复用 BAC 置信语义
+- [ ] D3 组链评分与报告:report.md 增「组合链」节
+
+### 5-E · 输入信任边界与防御输出(依赖 A2)
+
+- [ ] E1 recon 产物注入隔离:外部内容进 prompt 前显式边界标记 +
+  指令区隔离,canary 测试钉死
+- [ ] E2 pre-prompt 检测技能:`skills/agent-env/` 确定性规则检测器
+  (git 配置 RCE 原语/自动加载路径/.mcp.json/hooks,零误报)
+- [ ] E3 补丁重测输出(PatchOps):confirmed finding 生成重放包,
+  `cain-agent retest --workspace` 一键复测,产出补丁有效性报告
