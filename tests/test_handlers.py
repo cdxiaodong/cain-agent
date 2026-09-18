@@ -136,7 +136,7 @@ def test_recon_handler_artifacts_structure(ws: Workspace) -> None:
     handler = make_recon_handler(executor, SkillLoader(SKILLS_ROOT))
     result = handler(_ctx(ws, "recon"))
 
-    assert result.artifacts == [RECON_ENDPOINTS_FILE, RECON_RAW_FILE]
+    assert result.artifacts == [RECON_ENDPOINTS_FILE, RECON_RAW_FILE, "recon/gate.json"]
     endpoints = json.loads((ws.root / RECON_ENDPOINTS_FILE).read_text(encoding="utf-8"))
     assert len(endpoints) == 2, "非法条目(缺 url)应被跳过"
     assert endpoints[0]["url"] == "http://example.com/login"
