@@ -41,6 +41,11 @@ REASON_MAX_LEN = 30
 """``Finding.reason`` 的字符上限(按 Unicode 码点计,中文一字一码点)。"""
 
 _EVIDENCE_HASH_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_REPLAY_KEYS = frozenset({"method", "url", "param_names", "header_names"})
+"""replay 字段白名单(Phase 5-A2):只收方法/URL/名称。"""
+
+_REPLAY_NAME_RE = re.compile(r"[A-Za-z0-9_.\-]{1,64}")
+"""重放名称白名单:合法 token(字母数字/_-.),拒绝一切带值形态。"""
 
 
 class FindingError(ValueError):
@@ -117,6 +122,66 @@ def _require_text(value: object, field: str) -> str:
     return value
 
 
+
+
+@dataclass(frozen=True)
+class EvidenceReplay:
+    """可重放证据包(Phase 5-A2):只收方法/URL/名称,绝不收值。
+
+    重放所需的参数名/头名是**名称白名单**——每个名称须为合法 token
+    (字母数字/_-.),长度 1-64;含 ``=``/空格/斜杠/冒号等凭证值形态
+    一律拒绝,与 web/bac_evidence 的敏感字段拒绝语义对齐。
+    """
+
+    method: str
+    url: str
+    param_names: tuple[str, ...] = ()
+    header_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_text(self.method, "replay.method")
+        _require_text(self.url, "replay.url")
+        for kind, names in (("param", self.param_names), ("header", self.header_names)):
+            for name in names:
+                if not _REPLAY_NAME_RE.fullmatch(name):
+                    raise FindingError(
+                        f"replay.{kind}_names 含非法名称 {name!r}"
+                        "(名称只收 token,不收值——凭证/带值形态拒绝)"
+                    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EvidenceReplay:
+        if not isinstance(data, dict):
+            raise FindingError(f"replay 必须是 dict: {type(data).__name__}")
+        extra = set(data) - _REPLAY_KEYS
+        if extra:
+            raise FindingError(f"replay 含未知字段(仅收名称白名单): {sorted(extra)}")
+        missing = _REPLAY_KEYS - set(data)
+        if missing:
+            raise FindingError(f"replay 缺字段: {sorted(missing)}")
+
+        def _names(key: str) -> tuple[str, ...]:
+            raw = data[key]
+            if not isinstance(raw, list) or any(not isinstance(n, str) for n in raw):
+                raise FindingError(f"replay.{key} 必须为字符串列表")
+            return tuple(raw)
+
+        return cls(
+            method=data["method"],
+            url=data["url"],
+            param_names=_names("param_names"),
+            header_names=_names("header_names"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "method": self.method,
+            "url": self.url,
+            "param_names": list(self.param_names),
+            "header_names": list(self.header_names),
+        }
+
+
 @dataclass(frozen=True)
 class Finding:
     """一条"发现"的不可变记录,字段对齐 DESIGN §3.3。
@@ -134,6 +199,8 @@ class Finding:
     service: str
     resource: str
     issue_type: str
+    replay: EvidenceReplay | None = None
+    """可重放证据包(Phase 5-A2,可选):只含方法/URL/名称,不含任何值。"""
 
     def __post_init__(self) -> None:
         _require_text(self.finding_id, "finding_id")
@@ -150,11 +217,13 @@ class Finding:
             )
         for field in ("cloud", "service", "resource", "issue_type"):
             _require_text(getattr(self, field), field)
+        if self.replay is not None and not isinstance(self.replay, EvidenceReplay):
+            raise FindingError(f"replay 必须是 EvidenceReplay: {type(self.replay).__name__}")
 
     # -- findings.json 序列化 ---------------------------------------------------
     def to_dict(self) -> dict[str, str]:
         """转为纯 dict(枚举取 value),可直接进 Workspace.findings.json。"""
-        return {
+        out: dict[str, Any] = {
             "finding_id": self.finding_id,
             "result": self.result.value,
             "severity": self.severity.value,
@@ -165,6 +234,9 @@ class Finding:
             "resource": self.resource,
             "issue_type": self.issue_type,
         }
+        if self.replay is not None:
+            out["replay"] = self.replay.to_dict()
+        return out
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Finding:
@@ -173,13 +245,18 @@ class Finding:
             raise FindingError(f"Finding 必须是 dict: {type(data).__name__}")
         expected = set(cls.__dataclass_fields__)
         keys = set(data)
-        missing = expected - keys
+        # replay 为可选字段(Phase 5-A2):旧 findings.json 无此键合法
+        optional = {"replay"}
+        missing = expected - optional - keys
         extra = keys - expected
         if missing:
             raise FindingError(f"Finding 缺字段: {sorted(missing)}")
         if extra:
             raise FindingError(f"Finding 含未知字段: {sorted(extra)}")
-        return cls(**data)
+        kwargs = dict(data)
+        if "replay" in kwargs:
+            kwargs["replay"] = EvidenceReplay.from_dict(kwargs["replay"])
+        return cls(**kwargs)
 
 
 def fingerprint(finding: Finding) -> str:

@@ -416,6 +416,34 @@ def _render_evidence_index(report: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _render_replay_index(report: dict[str, Any]) -> list[str]:
+    """重放清单(Phase 5-A2):只列方法/URL/名称——值一律不进报告。"""
+    conclusions = report.get("conclusions") or []
+    with_replay = [c for c in conclusions if isinstance(c.get("replay"), dict)]
+    if not with_replay:
+        return []
+    lines = [
+        "## 重放清单",
+        "",
+        "> 仅方法/URL/参数与头的**名称**(证据原文照旧只哈希);"
+        "重放所需的会话材料不在本报告,由 findings.json 配套工作区提供。",
+        "",
+        "| finding_id | 方法 | URL | 参数名 | 头名 |",
+        "|---|---|---|---|---|",
+    ]
+    for conclusion in with_replay:
+        replay = conclusion["replay"]
+        lines.append(
+            f"| {_escape_cell(conclusion.get('finding_id', '?'))} "
+            f"| {_escape_cell(replay.get('method', '?'))} "
+            f"| {_escape_cell(replay.get('url', '?'))} "
+            f"| {_escape_cell(', '.join(replay.get('param_names', [])))} "
+            f"| {_escape_cell(', '.join(replay.get('header_names', [])))} |"
+        )
+    lines.append("")
+    return lines
+
+
 def _render_remediation(report: dict[str, Any]) -> list[str]:
     conclusions = report.get("conclusions") or []
     lines = ["## 修复建议", ""]
@@ -476,6 +504,7 @@ def render_report_markdown(report: dict[str, Any], meta: ExecutionMeta) -> str:
     lines += _render_findings_table(report)
     lines += _render_details(report)
     lines += _render_evidence_index(report)
+    lines += _render_replay_index(report)
     lines += _render_remediation(report)
     lines += [_LEGAL_DISCLAIMER, ""]
     return "\n".join(lines)
