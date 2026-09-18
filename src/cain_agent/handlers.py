@@ -45,9 +45,11 @@ from cain_agent.findings import (
     fingerprint,
     hash_evidence,
 )
+from cain_agent.gates import CoverageConfig, check_coverage
 from cain_agent.orchestrator import StageContext, StageHandler, StageResult
 from cain_agent.redact import redact, redact_dict
 from cain_agent.validator import UNTRUSTED_CLOSE, UNTRUSTED_OPEN
+from cain_agent.workspace import WorkspaceCorruptError
 
 __all__ = [
     "RECON_ENDPOINTS_FILE",
@@ -64,6 +66,9 @@ RECON_ENDPOINTS_FILE = "recon/endpoints.json"
 
 RECON_RAW_FILE = "recon/recon-output.txt"
 """recon 阶段 Agent 原始输出(脱敏后)落盘路径,供审计与人工复核。"""
+
+RECON_GATE_FILE = "recon/gate.json"
+"""Phase 5-A1 覆盖率门产物:pass/blocked/off + 原因链;test 阶段读取。"""
 
 TEST_RAW_FILE = "test/test-output.txt"
 """test 阶段 Agent 原始输出(脱敏后)落盘路径。"""
@@ -290,7 +295,13 @@ def _coerce_endpoint(entry: Any) -> dict[str, Any] | None:
     return out
 
 
-def make_recon_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> StageHandler:
+def make_recon_handler(
+    executor: SDKExecutor,
+    skill_loader: SkillLoader,
+    *,
+    coverage_gate: bool = False,
+    coverage_config: CoverageConfig | None = None,
+) -> StageHandler:
     """recon 阶段真实 handler:Agent 侦察 → 端点草稿 + 原始输出落盘。
 
     产物(重跑覆盖同名文件,幂等):
@@ -329,6 +340,28 @@ def make_recon_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stag
         if payload is None:
             caveats.append("Agent 输出未解析出 JSON,endpoints 置空")
         caveats.extend(skill_loader.issues)  # 技能加载降级原因随产物可见(issue #9)
+        # Phase 5-A1 覆盖率退出门:退出由代码裁决,不信任模型自评
+        verdict = None
+        if coverage_gate:
+            verdict = check_coverage(endpoints, {}, coverage_config)
+            gate_value = "pass" if verdict.passed else "blocked"
+            if not verdict.passed:
+                caveats.append(
+                    "coverage_insufficient: " + "; ".join(verdict.reasons)
+                    + "(test 阶段将降级 dry-run)"
+                )
+        else:
+            gate_value = "off"
+        # 门控落盘为产物(与 endpoints.json 同目录):test 阶段据此决定是否降级
+        gate_path = ctx.workspace.path(RECON_GATE_FILE)
+        _write_json(
+            gate_path,
+            {
+                "recon_gate": gate_value,
+                "reasons": list(verdict.reasons) if verdict else [],
+                "endpoint_count": len(endpoints),
+            },
+        )
         summary = f"recon 完成: 提取端点 {len(endpoints)} 个,跳过非法条目 {skipped} 条"
         if caveats:
             summary += ";" + ";".join(caveats)
@@ -337,10 +370,12 @@ def make_recon_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stag
             artifacts=[
                 Path(RECON_ENDPOINTS_FILE).as_posix(),
                 Path(RECON_RAW_FILE).as_posix(),
+                Path(RECON_GATE_FILE).as_posix(),
             ],
             data={
                 "endpoint_count": len(endpoints),
                 "skipped_entries": skipped,
+                "recon_gate": gate_value,
                 "interrupted": result.interrupted,
                 "is_error": result.is_error,
                 "caveats": caveats,
@@ -451,6 +486,21 @@ def _merge_findings(existing: list[Finding], new: list[Finding]) -> list[Finding
     return merged
 
 
+TEST_GATE_SKIPPED_FILE = "test/gate-skipped.txt"
+"""覆盖率门拦截时 test 阶段的说明产物(降级 dry-run 的显式留痕)。"""
+
+
+def _read_recon_gate(ctx: StageContext) -> str:
+    """读 recon 阶段的 gate.json 产物;缺失/损坏视为 pass(向后兼容旧工作区)。"""
+    try:
+        gate = ctx.workspace.read_json(RECON_GATE_FILE)
+    except (OSError, ValueError, WorkspaceCorruptError):
+        return "pass"
+    if isinstance(gate, dict) and isinstance(gate.get("recon_gate"), str):
+        return gate["recon_gate"]
+    return "pass"
+
+
 def make_test_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> StageHandler:
     """test 阶段真实 handler:读 recon 产物 → L1 探测 → Finding 落 findings.json。
 
@@ -460,6 +510,22 @@ def make_test_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stage
     """
 
     def handler(ctx: StageContext) -> StageResult:
+        # Phase 5-A1:recon 覆盖率门 blocked 时 test 降级 dry-run(不启动 Agent)
+        gate = _read_recon_gate(ctx)
+        if gate == "blocked":
+            _write_text(
+                ctx.workspace.path(TEST_GATE_SKIPPED_FILE),
+                "recon 覆盖率门 blocked:test 阶段按 Phase 5-A1 降级 dry-run,"
+                "未启动测试 Agent。请补足 recon 端点/探测后重跑。",
+            )
+            return StageResult(
+                summary="test 降级 dry-run: recon 覆盖率门 blocked(端点/探测不足)",
+                artifacts=[TEST_GATE_SKIPPED_FILE],
+                data={
+                    "skipped_reason": "recon_gate_blocked",
+                    "new_findings": 0,
+                },
+            )
         endpoints_path = ctx.workspace.path(RECON_ENDPOINTS_FILE)
         endpoints: list[Any] = []
         if endpoints_path.exists():

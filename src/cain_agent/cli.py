@@ -159,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="initialize workspace + scope and print execution plan, don't start Agent",
     )
     run.add_argument(
+        "--coverage-gate",
+        action="store_true",
+        help="开启 recon 覆盖率退出门:端点/探测不足时 test 阶段降级 dry-run"
+        "(缺省关闭,行为与旧版一致;Phase 5-A1)",
+    )
+    run.add_argument(
         "--backend",
         choices=("claude", "pi"),
         default="claude",
@@ -433,7 +439,9 @@ def _build_handlers(
     from cain_agent.pipeline import FindingsPipeline, make_report_handler
 
     skill_loader = SkillLoader()  # 仓库 skills/ 根,既有约定
-    recon_handler = make_recon_handler(recon_executor, skill_loader)
+    recon_handler = make_recon_handler(
+        recon_executor, skill_loader, coverage_gate=args.coverage_gate
+    )
     test_handler = make_test_handler(test_executor, skill_loader)
     try:
         orchestration = _build_orchestration(args, workspace)
