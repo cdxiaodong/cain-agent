@@ -41,12 +41,14 @@ class ValidationConsensus(StrEnum):
 
 @dataclass(frozen=True)
 class VerificationVote:
-    """One session's parsed verdict."""
+    """One session's parsed verdict(+Phase 5-A4 反对理由)。"""
 
     session_id: str
     task_id: str
     verdict: VerificationVerdict
     error: str = ""
+    reason: str = ""
+    """会话判定理由(一句话,redact 后入库,不得含凭证/证据原文)。"""
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,24 @@ class VerificationReport:
     def confirmed(self) -> bool:
         return self.validation_consensus is ValidationConsensus.CONFIRMED
 
+    def dissent(self) -> list[dict[str, str]]:
+        """少数派意见(Phase 5-A4):与最终 consensus 不同的票,含理由。
+
+        呈现分歧而非只呈现表决结果——反对票理由是报告读者复核的关键线索。
+        """
+        consensus_verdict = {
+            ValidationConsensus.CONFIRMED: VerificationVerdict.CONFIRMED,
+            ValidationConsensus.REJECTED: VerificationVerdict.REJECTED,
+        }.get(self.validation_consensus)
+        if consensus_verdict is None:  # contested/无共识:全部票都是潜在分歧
+            minority = self.votes
+        else:
+            minority = [v for v in self.votes if v.verdict is not consensus_verdict]
+        return [
+            {"voter": v.session_id, "verdict": v.verdict.value, "reason": v.reason}
+            for v in minority
+        ]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_id": self.finding_id,
@@ -73,12 +93,14 @@ class VerificationReport:
                 verdict.value: self.vote_counts[verdict]
                 for verdict in VerificationVerdict
             },
+            "dissent": self.dissent(),
             "votes": [
                 {
                     "session_id": vote.session_id,
                     "task_id": vote.task_id,
                     "verdict": vote.verdict.value,
                     "error": vote.error,
+                    "reason": vote.reason,
                 }
                 for vote in self.votes
             ],
@@ -91,7 +113,14 @@ class VerificationSession(BaseSolver):
     Subclasses implement ``verify``. The returned verdict is serialized in
     ``SolverResult.output`` so a verification vote is never mistaken for a new
     Finding and never pollutes the Blackboard's finding list.
+
+    Phase 5-A4:子类可在 ``verify`` 内设置 ``self.last_reason``(判定理由,
+    redact 后短文本),随表决序列化——供分歧呈现消费。
     """
+
+    def __init__(self, solver_id: str) -> None:
+        super().__init__(solver_id)
+        self.last_reason: str = ""
 
     def capability(self) -> str:
         return "verification"
@@ -108,6 +137,7 @@ class VerificationSession(BaseSolver):
                 {
                     "finding_id": finding.finding_id,
                     "verdict": verdict.value,
+                    "reason": self.last_reason,
                 },
                 ensure_ascii=False,
             ),
@@ -216,6 +246,7 @@ class VerificationPool:
             task_id=result.task_id,
             verdict=verdict,
             error="" if verdict is not VerificationVerdict.INCONCLUSIVE else "invalid verdict output",
+            reason=self._parse_reason(result.output),
         )
 
     @staticmethod
@@ -237,6 +268,20 @@ class VerificationPool:
             except ValueError:
                 return VerificationVerdict.INCONCLUSIVE
         return VerificationVerdict.INCONCLUSIVE
+
+    @staticmethod
+    def _parse_reason(output: str) -> str:
+        """从会话输出解析一句话理由;缺失/非法一律空串(不猜)。"""
+        try:
+            payload = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            return ""
+        if not isinstance(payload, dict):
+            return ""
+        reason = payload.get("reason")
+        if isinstance(reason, str):
+            return reason.strip()[:200]
+        return ""
 
     @staticmethod
     def _build_report(finding_id: str, votes: tuple[VerificationVote, ...]) -> VerificationReport:

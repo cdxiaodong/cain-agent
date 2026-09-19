@@ -470,6 +470,17 @@ def _render_remediation(report: dict[str, Any]) -> list[str]:
             f"(finding: `{_escape_cell(conclusion.get('finding_id', '?'))}`): "
             f"{_remediation_for(conclusion)}"
         )
+        dissent = conclusion.get("model_dissent")
+        if isinstance(dissent, list) and dissent:
+            lines.append("  ")
+            lines.append("  **⚠ 分歧意见**(Phase 5-A4:呈现少数派判定,供人工复核):")
+            for entry in dissent:
+                if isinstance(entry, dict):
+                    lines.append(
+                        f"  - `{_escape_cell(entry.get('voter', '?'))}` 判 "
+                        f"{_escape_cell(entry.get('verdict', '?'))}:"
+                        f"{_escape_cell(entry.get('reason', '') or '(未给出理由)')}"
+                    )
     lines.append("")
     lines.append("> 建议按定级从高到低排期处置;修复后复测验证并更新本报告结论。")
     lines.append("")
