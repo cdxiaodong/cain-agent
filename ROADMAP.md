@@ -97,16 +97,16 @@
 
 ### 5-A · 验证纪律强化(先行,纯代码零依赖)
 
-- [ ] A1 覆盖率退出门:recon 退出由代码校验(endpoints 数/探测计数阈值),
+- [x] A1 覆盖率退出门(2026-09-18 合入 22b461f:gates.py 三维阈值,缺省零变化,显式开启门控):recon 退出由代码校验(endpoints 数/探测计数阈值),
   不达标 caveats 标记 + state 门控,test 读 blocked 门降级 dry-run;
   新增 `src/cain_agent/gates.py` 纯函数 `check_coverage`
-- [ ] A2 可重放证据包:findings 增可选 `replay` 字段(泛化
+- [x] A2 可重放证据包(2026-09-18 夜班合入 973142a:EvidenceReplay 值形态一律拒绝+报告重放清单节):findings 增可选 `replay` 字段(泛化
   web/bac_evidence 结构,method/url/参数白名单键不含值);
   report.md 增「重放清单」节(证据原文照旧只哈希)
 - [ ] A3 confirm 副作用门:validator 增 `side_effect_evidence`,
   无副作用证据的 confirmed 降级新状态 `likely`(第五状态),
   验证池表决取保守,聚合与 report 同步
-- [ ] A4 分歧呈现:findings 增 `model_dissent`(验证池反对票理由,
+- [x] A4 分歧呈现(2026-09-19 合入 a06ce94:少数派理由收集/redact/报告分歧子块):findings 增 `model_dissent`(验证池反对票理由,
   只含依据不含凭证),report.md 详情节呈现分歧子块
 
 ### 5-B · 上下文工程
