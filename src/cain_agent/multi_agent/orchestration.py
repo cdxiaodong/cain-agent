@@ -48,6 +48,7 @@ from cain_agent.pipeline import (
     VALIDATION_SUMMARY_FILE,
     FindingsPipeline,
 )
+from cain_agent.redact import redact
 from cain_agent.report_markdown import collect_execution_meta, render_report_markdown
 
 __all__ = [
@@ -109,8 +110,10 @@ detail: {finding.detail}
 evidence: {json.dumps(finding.evidence, ensure_ascii=False, sort_keys=True)}
 [/UNTRUSTED_DATA]
 
-只输出 JSON: {{"verdict":"confirmed | rejected | inconclusive"}}
-证据足以证明存在 → confirmed;足以判定误报 → rejected;否则 inconclusive。"""
+只输出 JSON: {{"verdict":"confirmed | rejected | inconclusive","reason":"一句话理由"}}
+证据足以证明存在 → confirmed;足以判定误报 → rejected;否则 inconclusive。
+reason 只写判定依据(如证据哈希是否匹配/描述是否自洽),禁止粘贴证据原文
+或任何凭证;输出前先在心中检查 reason 不含敏感值。"""
 
         result = asyncio.run(self.executor.run(prompt))
         if result.interrupted or result.is_error:
@@ -120,6 +123,10 @@ evidence: {json.dumps(finding.evidence, ensure_ascii=False, sort_keys=True)}
         if payload is None:
             raise RuntimeError("validation session returned invalid JSON")
         value = payload.get("verdict", payload.get("result"))
+        raw_reason = payload.get("reason")
+        if isinstance(raw_reason, str):
+            # 分歧理由 redact 后截断入库(Phase 5-A4):只留依据不留敏感值
+            self.last_reason = redact(raw_reason).strip()[:200]
         if value == "false_positive":
             return VerificationVerdict.REJECTED
         if isinstance(value, str):
@@ -302,6 +309,10 @@ def aggregate(
                 f"Manager aggregated an unknown finding: {manager_conclusion.finding_id}"
             )
         serialized = manager_conclusion.to_dict()
+        pool_fact = orchestration.blackboard.get_fact(
+            f"validation:{manager_conclusion.finding_id}"
+        ) if orchestration.blackboard else None
+        dissent = pool_fact.get("dissent") if isinstance(pool_fact, dict) else None
         conclusions.append({
             "finding_id": finding.finding_id,
             "result": finding.result.value,
@@ -316,6 +327,7 @@ def aggregate(
             "basis": serialized["evidence_chain"],
             "memory_hits": serialized["memory_hits"],
             "solver": serialized["finding"]["solver_id"],
+            "model_dissent": dissent or [],
         })
 
     if len(conclusions) != len(findings):
