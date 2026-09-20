@@ -102,7 +102,12 @@ def _finding_to_pool_candidate(finding: Finding) -> ma_types.Finding:
     )
 
 
-def _apply_pool_report(finding: Finding, report: VerificationReport) -> Finding:
+def _apply_pool_report(
+    finding: Finding,
+    report: VerificationReport,
+    *,
+    side_effect_gate: bool = False,
+) -> Finding:
     """把验证池的多数表决结论收口回流水线 Finding(四态 + 规则表定级)。
 
     表决到四态的映射:confirmed→confirmed、rejected→false_positive、
@@ -111,7 +116,14 @@ def _apply_pool_report(finding: Finding, report: VerificationReport) -> Finding:
     """
     consensus = report.validation_consensus
     if consensus is ValidationConsensus.CONFIRMED:
-        result, reason = FindingResult.CONFIRMED, _REASON_POOL_CONFIRMED
+        if side_effect_gate and not finding.side_effect_evidence:
+            # Phase 5-A3(显式开启):多数 confirmed 但无副作用证据 →
+            # 降级 likely(很可能成立,尚未跨真实信任边界);表决取保守。
+            # 缺省关闭:旧数据(无该字段)语义保持 confirmed 不动。
+            result = FindingResult.LIKELY
+            reason = _REASON_POOL_CONFIRMED + "(缺副作用证据,降级 likely)"
+        else:
+            result, reason = FindingResult.CONFIRMED, _REASON_POOL_CONFIRMED
     elif consensus is ValidationConsensus.REJECTED:
         result, reason = FindingResult.FALSE_POSITIVE, _REASON_POOL_REJECTED
     else:
@@ -177,6 +189,9 @@ class FindingsPipeline:
         validation_executor: **校验专用** executor(与发现方不同 session)。
         verification_pool: 可选的并行验证池(``VerificationPool``);提供时
             finding 校验改走多数表决,池执行异常自动降级回单会话校验。
+        side_effect_gate: Phase 5-A3 confirm 副作用门(缺省关闭):开启时
+            多数 confirmed 但缺 ``side_effect_evidence`` 的 finding 降级
+            ``LIKELY``;缺省行为与旧版完全一致。
         两 executor 为同一对象时构造即抛 ``ValidatorError``(防自证硬约束)。
     """
 
@@ -187,6 +202,7 @@ class FindingsPipeline:
         discovery_executor: SDKExecutor,
         validation_executor: SDKExecutor,
         verification_pool: VerificationPool | None = None,
+        side_effect_gate: bool = False,
     ) -> None:
         self.workspace = workspace
         # FindingValidator 构造期完成"同 session 即拒绝"的防自证检查。
@@ -205,6 +221,7 @@ class FindingsPipeline:
                         "发现者≠校验者(DESIGN §3.3),禁止自证"
                     )
         self._pool = verification_pool
+        self.side_effect_gate = side_effect_gate
 
     async def _validate_one(self, finding: Finding) -> Finding:
         """校验单条:有池走多数表决(异常降级单会话),无池走单会话校验。"""
@@ -217,7 +234,9 @@ class FindingsPipeline:
         except Exception:
             # 池不可用(构造/执行异常)→ 降级回单会话校验,不让 finding 漏校验。
             return await self._validator.validate(finding)
-        return _apply_pool_report(finding, report)
+        return _apply_pool_report(
+            finding, report, side_effect_gate=self.side_effect_gate
+        )
 
     async def run(self) -> ValidationSummary:
         """跑一遍校验流水线,返回并落盘校验汇总。
