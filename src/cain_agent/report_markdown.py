@@ -56,6 +56,7 @@ _SEVERITY_RANK: dict[str, int] = {
 
 _RESULT_LABELS: dict[str, str] = {
     "confirmed": "已确认",
+    "likely": "很可能(缺副作用证据,Phase 5-A3)",
     "false_positive": "误报",
     "validation_system_error": "校验异常",
     "validation_inconclusive": "证据不足",

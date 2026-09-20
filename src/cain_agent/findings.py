@@ -53,9 +53,14 @@ class FindingError(ValueError):
 
 
 class FindingResult(StrEnum):
-    """校验结果四状态(DESIGN §3.3,沿用 4 状态思想)。"""
+    """校验结果五状态(DESIGN §3.3 四状态 + Phase 5-A3 第五状态)。
+
+    ``LIKELY``:表决多数 confirmed 但缺副作用证据(Phase 5-A3)——
+    "很可能成立,尚未跨真实信任边界"。旧数据(无该状态值)语义不变。
+    """
 
     CONFIRMED = "confirmed"
+    LIKELY = "likely"
     FALSE_POSITIVE = "false_positive"
     VALIDATION_SYSTEM_ERROR = "validation_system_error"
     VALIDATION_INCONCLUSIVE = "validation_inconclusive"
@@ -202,6 +207,9 @@ class Finding:
     replay: EvidenceReplay | None = None
     """可重放证据包(Phase 5-A2,可选):只含方法/URL/名称,不含任何值。"""
 
+    side_effect_evidence: str | None = None
+    """副作用证据(Phase 5-A3,可选):哈希或"只读/已回滚"说明;None=未提供。"""
+
     def __post_init__(self) -> None:
         _require_text(self.finding_id, "finding_id")
         object.__setattr__(self, "result", _coerce_enum(self.result, FindingResult, "result"))
@@ -219,6 +227,10 @@ class Finding:
             _require_text(getattr(self, field), field)
         if self.replay is not None and not isinstance(self.replay, EvidenceReplay):
             raise FindingError(f"replay 必须是 EvidenceReplay: {type(self.replay).__name__}")
+        if self.side_effect_evidence is not None and (
+            not isinstance(self.side_effect_evidence, str) or not self.side_effect_evidence.strip()
+        ):
+            raise FindingError("side_effect_evidence 必须为非空字符串或 None")
 
     # -- findings.json 序列化 ---------------------------------------------------
     def to_dict(self) -> dict[str, str]:
@@ -236,6 +248,8 @@ class Finding:
         }
         if self.replay is not None:
             out["replay"] = self.replay.to_dict()
+        if self.side_effect_evidence is not None:
+            out["side_effect_evidence"] = self.side_effect_evidence
         return out
 
     @classmethod
@@ -246,7 +260,7 @@ class Finding:
         expected = set(cls.__dataclass_fields__)
         keys = set(data)
         # replay 为可选字段(Phase 5-A2):旧 findings.json 无此键合法
-        optional = {"replay"}
+        optional = {"replay", "side_effect_evidence"}
         missing = expected - optional - keys
         extra = keys - expected
         if missing:

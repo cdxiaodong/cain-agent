@@ -84,6 +84,7 @@ def test_report_aggregates_manager_solver_pool_and_memory(tmp_path: Path) -> Non
         "total": 1,
         "results": {
             "confirmed": 1,
+            "likely": 0,
             "false_positive": 0,
             "validation_system_error": 0,
             "validation_inconclusive": 0,
