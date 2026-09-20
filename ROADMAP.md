@@ -103,7 +103,7 @@
 - [x] A2 可重放证据包(2026-09-18 夜班合入 973142a:EvidenceReplay 值形态一律拒绝+报告重放清单节):findings 增可选 `replay` 字段(泛化
   web/bac_evidence 结构,method/url/参数白名单键不含值);
   report.md 增「重放清单」节(证据原文照旧只哈希)
-- [ ] A3 confirm 副作用门:validator 增 `side_effect_evidence`,
+- [x] A3 confirm 副作用门(2026-09-20 合入 7a76f6a:五态 LIKELY+产门端降档,池语义不变,开关缺省关零变化):validator 增 `side_effect_evidence`,
   无副作用证据的 confirmed 降级新状态 `likely`(第五状态),
   验证池表决取保守,聚合与 report 同步
 - [x] A4 分歧呈现(2026-09-19 合入 a06ce94:少数派理由收集/redact/报告分歧子块):findings 增 `model_dissent`(验证池反对票理由,
