@@ -43,6 +43,7 @@ from cain_agent.executor import (
     INTERRUPT_TOTAL_BUDGET,
     ExecutorResult,
     ToolCallRecord,
+    complete_tool_call,
 )
 
 DEFAULT_BRIDGE_PATH = (
@@ -265,6 +266,16 @@ class PiExecutor:
                         proc.stdin,
                         {"type": "verdict", "id": tid, "allow": allow},
                     )
+                elif etype == "tool_result":
+                    tid = str(event.get("id") or "")
+                    for call in reversed(result.tool_calls):
+                        if call.tool_use_id == tid:
+                            complete_tool_call(
+                                call,
+                                event.get("output", ""),
+                                succeeded=bool(event.get("ok")),
+                            )
+                            break
                 elif etype == "done":
                     result.usage = event.get("usage")
                     result.num_turns = int(event.get("numTurns") or 0)

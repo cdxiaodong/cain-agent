@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, TypeVar
 
@@ -35,6 +36,7 @@ __all__ = [
     "dedup",
     "fingerprint",
     "hash_evidence",
+    "has_confirmable_provenance",
 ]
 
 REASON_MAX_LEN = 30
@@ -134,6 +136,8 @@ class Finding:
     service: str
     resource: str
     issue_type: str
+    provenance: dict[str, Any] | None = None
+    invalid_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.finding_id, "finding_id")
@@ -150,11 +154,17 @@ class Finding:
             )
         for field in ("cloud", "service", "resource", "issue_type"):
             _require_text(getattr(self, field), field)
+        if self.provenance is not None and not isinstance(self.provenance, dict):
+            raise FindingError("provenance 必须是 dict 或 null")
+        if not isinstance(self.invalid_reasons, tuple):
+            object.__setattr__(self, "invalid_reasons", tuple(self.invalid_reasons))
+        if any(not isinstance(reason, str) or not reason for reason in self.invalid_reasons):
+            raise FindingError("invalid_reasons 必须是非空字符串列表")
 
     # -- findings.json 序列化 ---------------------------------------------------
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         """转为纯 dict(枚举取 value),可直接进 Workspace.findings.json。"""
-        return {
+        data: dict[str, Any] = {
             "finding_id": self.finding_id,
             "result": self.result.value,
             "severity": self.severity.value,
@@ -165,21 +175,63 @@ class Finding:
             "resource": self.resource,
             "issue_type": self.issue_type,
         }
+        if self.provenance is not None:
+            data["provenance"] = dict(self.provenance)
+        if self.invalid_reasons:
+            data["invalid_reasons"] = list(self.invalid_reasons)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Finding:
         """从 findings.json 的 dict 还原;缺键/多键/类型错误一律拒绝。"""
         if not isinstance(data, dict):
             raise FindingError(f"Finding 必须是 dict: {type(data).__name__}")
-        expected = set(cls.__dataclass_fields__)
+        required = {
+            "finding_id", "result", "severity", "evidence_hash", "reason",
+            "cloud", "service", "resource", "issue_type",
+        }
+        optional = {"provenance", "invalid_reasons"}
         keys = set(data)
-        missing = expected - keys
-        extra = keys - expected
+        missing = required - keys
+        extra = keys - required - optional
         if missing:
             raise FindingError(f"Finding 缺字段: {sorted(missing)}")
         if extra:
             raise FindingError(f"Finding 含未知字段: {sorted(extra)}")
-        return cls(**data)
+        payload = dict(data)
+        payload["invalid_reasons"] = tuple(payload.get("invalid_reasons") or ())
+        return cls(**payload)
+
+
+def has_confirmable_provenance(finding: Finding) -> bool:
+    """Return True only for a complete, internally linked executed request record."""
+    p = finding.provenance
+    if not isinstance(p, dict):
+        return False
+    required_text = ("request_id", "url", "host", "method", "timestamp", "response_hash")
+    if any(not isinstance(p.get(key), str) or not str(p[key]).strip() for key in required_text):
+        return False
+    if p.get("evidence_request_id") != p.get("request_id"):
+        return False
+    if p.get("evidence_hash") != finding.evidence_hash:
+        return False
+    if p.get("executed") is not True:
+        return False
+    status = p.get("status_code")
+    if not isinstance(status, int) or isinstance(status, bool) or not 100 <= status <= 599:
+        return False
+    port = p.get("port")
+    if port is not None and (
+        not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535
+    ):
+        return False
+    if not _EVIDENCE_HASH_RE.fullmatch(str(p["response_hash"])):
+        return False
+    try:
+        datetime.fromisoformat(str(p["timestamp"]).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
 
 
 def fingerprint(finding: Finding) -> str:

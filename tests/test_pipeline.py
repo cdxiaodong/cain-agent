@@ -77,16 +77,29 @@ def ws(tmp_path: Path) -> Workspace:
 
 
 def _finding(**overrides: Any) -> Finding:
+    evidence_hash = hash_evidence("bucket acl = public-read")
     kwargs: dict[str, Any] = {
         "finding_id": "aliyun-oss-public-bucket-001",
         "result": FindingResult.VALIDATION_INCONCLUSIVE,
         "severity": Severity.INFO,
-        "evidence_hash": hash_evidence("bucket acl = public-read"),
+        "evidence_hash": evidence_hash,
         "reason": "发现方:桶公开可读",
         "cloud": "aliyun",
         "service": "oss",
         "resource": "acs:oss:::demo-bucket",
         "issue_type": "public-read",
+        "provenance": {
+            "request_id": "tool-1",
+            "url": "https://example.com/storage/demo-bucket",
+            "host": "example.com",
+            "method": "GET",
+            "timestamp": "2026-09-04T15:00:00+00:00",
+            "status_code": 200,
+            "response_hash": hash_evidence("HTTP/1.1 200 OK"),
+            "evidence_request_id": "tool-1",
+            "evidence_hash": evidence_hash,
+            "executed": True,
+        },
     }
     kwargs.update(overrides)
     return Finding(**kwargs)

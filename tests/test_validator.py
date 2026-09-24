@@ -139,6 +139,62 @@ def test_json_embedded_in_prose_still_parsed() -> None:
     assert out.result is FindingResult.CONFIRMED
 
 
+# -- JSON 提取健壮性回归(prose / fences / 多个 JSON blob 不得压垮解析) -------------
+
+
+def test_parses_clean_json() -> None:
+    text = '{"result": "confirmed", "severity": "low", "reason": "证据成立"}'
+    executor = FakeExecutor([ExecutorResult(text=text)])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.CONFIRMED
+
+
+def test_parses_fenced_json() -> None:
+    text = '```json\n{"result": "confirmed", "severity": "low", "reason": "证据成立"}\n```'
+    executor = FakeExecutor([ExecutorResult(text=text)])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.CONFIRMED
+
+
+def test_recovers_after_malformed_first_attempt() -> None:
+    """第一次输出带尾逗号(非法 JSON),随后模型自行修正为合法 JSON。"""
+    malformed = '{"result": "confirmed", "severity": "low",}'
+    corrected = '{"result": "confirmed", "severity": "low", "reason": "证据成立"}'
+    text = f"{malformed}\n上面格式错了,修正一下:\n{corrected}"
+    executor = FakeExecutor([ExecutorResult(text=text)])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.CONFIRMED
+
+
+def test_selects_final_object_among_multiple_valid_json_blobs() -> None:
+    """多个合法 JSON 同时出现,只有最后一个带 result 字段——必须选最终结果,
+    不能把不含 result 字段的先行 JSON 当成校验结论。"""
+    stray = '{"note": "只是中间调试输出"}'
+    final = '{"result": "false_positive", "severity": "info", "reason": "误报"}'
+    text = f"调试信息:\n{stray}\n\n最终结论:\n{final}"
+    executor = FakeExecutor([ExecutorResult(text=text)])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.FALSE_POSITIVE
+
+
+def test_selects_final_of_multiple_result_bearing_json_blobs() -> None:
+    """两个 JSON 都带 result 字段(前一次判断被推翻)——必须取最后一个。"""
+    first_attempt = '{"result": "confirmed", "severity": "high", "reason": "初判"}'
+    final = '{"result": "false_positive", "severity": "info", "reason": "复核后判定误报"}'
+    text = f"初判:\n{first_attempt}\n\n复核后结论:\n{final}"
+    executor = FakeExecutor([ExecutorResult(text=text)])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.FALSE_POSITIVE
+    assert out.reason == "复核后判定误报"
+
+
+def test_completely_invalid_output_becomes_system_error() -> None:
+    executor = FakeExecutor([ExecutorResult(text="没有任何 JSON,只有纯文本分析。")])
+    out = asyncio.run(FindingValidator(executor).validate(_finding()))
+    assert out.result is FindingResult.VALIDATION_SYSTEM_ERROR
+    assert out.reason == "校验返回无法解析"
+
+
 # -- 定级收口:规则表压过模型建议 -------------------------------------------------
 
 

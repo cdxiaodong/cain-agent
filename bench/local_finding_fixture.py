@@ -73,21 +73,36 @@ def fixture_evidence(fixture: dict[str, Any]) -> str:
 
 def materialize_finding(fixture: dict[str, Any]) -> PipelineFinding:
     request = fixture["request"]
+    response = fixture["response"]
     expected = fixture["expected"]
     reason = str(expected.get("finding_reason", ""))
     if not reason.strip() or len(reason) > 30:
         raise ValueError("expected.finding_reason must be non-empty and at most 30 characters")
 
+    evidence_hash = hash_evidence(fixture_evidence(fixture))
+    request_id = f"fixture:{fixture['scenario_id']}"
     return PipelineFinding(
         finding_id=str(fixture["scenario_id"]),
         result=FindingResult.VALIDATION_INCONCLUSIVE,
         severity=Severity.HIGH,
-        evidence_hash=hash_evidence(fixture_evidence(fixture)),
+        evidence_hash=evidence_hash,
         reason=reason,
         cloud="web",
         service="http",
         resource=str(request["url"]),
         issue_type=str(expected["issue_type"]),
+        provenance={
+            "request_id": request_id,
+            "url": str(request["url"]),
+            "host": "127.0.0.1",
+            "method": str(request.get("method", "GET")).upper(),
+            "timestamp": "2026-09-04T00:00:00+00:00",
+            "status_code": int(response["status"]),
+            "response_hash": hash_evidence(json.dumps(response, sort_keys=True)),
+            "evidence_request_id": request_id,
+            "evidence_hash": evidence_hash,
+            "executed": True,
+        },
     )
 
 

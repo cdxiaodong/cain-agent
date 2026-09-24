@@ -34,7 +34,7 @@ from cain_agent.cli import (
     build_parser,
     main,
 )
-from cain_agent.executor import ExecutorResult
+from cain_agent.executor import ExecutorResult, ToolCallRecord, complete_tool_call
 from cain_agent.pi_executor import PiExecutor
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "bench"))
@@ -55,11 +55,11 @@ def _args(argv: list[str]) -> Any:
 
 def _canned_response(prompt: str) -> str:
     """按 prompt 中的 Agent 角色返回预制 JSON(测试专用,绝不触网)。"""
-    if "侦察 Agent" in prompt:
+    if "侦察 Agent" in prompt or "reconnaissance agent" in prompt:
         return json.dumps({"endpoints": []}, ensure_ascii=False)
-    if "测试 Agent" in prompt:
+    if "测试 Agent" in prompt or "testing agent" in prompt:
         return json.dumps({"findings": []}, ensure_ascii=False)
-    if "校验 Agent" in prompt:
+    if "校验 Agent" in prompt or "validation agent" in prompt:
         return json.dumps(
             {"result": "confirmed", "severity": "high", "reason": "证据成立"},
             ensure_ascii=False,
@@ -297,10 +297,10 @@ class TestRoutedRunIntegration:
         assert configs[0] == StageBackendConfig("pi", "deepseek", "cheap-x")
         assert configs[1].backend == "claude"
         # 分发:侦察 prompt 只进 recon 通道,测试 prompt 只进 test 通道
-        assert recon_fake.prompts and all("侦察 Agent" in p for p in recon_fake.prompts)
-        assert test_fake.prompts and all("测试 Agent" in p for p in test_fake.prompts)
-        assert not any("侦察 Agent" in p for p in test_fake.prompts)
-        assert not any("测试 Agent" in p for p in recon_fake.prompts)
+        assert recon_fake.prompts and all("reconnaissance agent" in p for p in recon_fake.prompts)
+        assert test_fake.prompts and all("testing agent" in p for p in test_fake.prompts)
+        assert not any("reconnaissance agent" in p for p in test_fake.prompts)
+        assert not any("testing agent" in p for p in recon_fake.prompts)
         # 校验通道独立(防自证)
         assert not validation_fake.prompts or all("校验 Agent" in p for p in validation_fake.prompts)
 
@@ -354,8 +354,8 @@ class TestRoutedRunIntegration:
         )
         assert code == 0, f"exit={code} stderr={err}"
         # 同一 executor 依次吃了侦察与测试两类 prompt
-        assert any("侦察 Agent" in p for p in shared.prompts)
-        assert any("测试 Agent" in p for p in shared.prompts)
+        assert any("reconnaissance agent" in p for p in shared.prompts)
+        assert any("testing agent" in p for p in shared.prompts)
         # Orchestrator 挂了 1 个 guard;无混搭 → 不存在补挂
         assert len(shared.hooks) == 1
 
@@ -458,7 +458,21 @@ class _ScriptedExecutor:
 
     async def run(self, prompt: str) -> ExecutorResult:
         self.prompts.append(prompt)
-        return ExecutorResult(text=self.response_text, session_id=self.session_id)
+        result = ExecutorResult(text=self.response_text, session_id=self.session_id)
+        if "testing agent" in prompt or "测试 Agent" in prompt:
+            fixture = load_fixture()
+            call = ToolCallRecord(
+                tool_use_id="fixture-request-1",
+                name="Bash",
+                input={"command": f"curl -i '{fixture['request']['url']}'"},
+            )
+            complete_tool_call(
+                call,
+                f"HTTP/1.1 {fixture['response']['status']} OK\n\n{fixture['response']['body']}",
+                succeeded=True,
+            )
+            result.tool_calls.append(call)
+        return result
 
 
 class TestMixedRoutingFixtureSmoke:
@@ -561,9 +575,9 @@ class TestMixedRoutingFixtureSmoke:
             StageBackendConfig("pi", "deepseek", "deepseek-chat"),
             StageBackendConfig("claude", "anthropic", "glm-5.3"),
         ]
-        assert any("侦察 Agent" in p for p in recon_fake.prompts)
-        assert any("测试 Agent" in p for p in test_fake.prompts)
-        assert not any("测试 Agent" in p for p in recon_fake.prompts)
+        assert any("reconnaissance agent" in p for p in recon_fake.prompts)
+        assert any("testing agent" in p for p in test_fake.prompts)
+        assert not any("testing agent" in p for p in recon_fake.prompts)
 
         # scope 硬拦截双挂载:两通道都过同一套 ScopeGuardHook 判定。
         assert len(test_fake.hooks) >= 1

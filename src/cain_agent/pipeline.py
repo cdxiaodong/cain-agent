@@ -40,7 +40,13 @@ from pathlib import Path
 from typing import Any
 
 from cain_agent.executor import SDKExecutor
-from cain_agent.findings import Finding, FindingResult, classify, dedup
+from cain_agent.findings import (
+    Finding,
+    FindingResult,
+    classify,
+    dedup,
+    has_confirmable_provenance,
+)
 from cain_agent.multi_agent import types as ma_types
 from cain_agent.multi_agent.verify_pool import (
     ValidationConsensus,
@@ -187,11 +193,14 @@ class FindingsPipeline:
         discovery_executor: SDKExecutor,
         validation_executor: SDKExecutor,
         verification_pool: VerificationPool | None = None,
+        language: str = "zh",
     ) -> None:
         self.workspace = workspace
         # FindingValidator 构造期完成"同 session 即拒绝"的防自证检查。
         self._validator = FindingValidator(
-            validation_executor, discovery_executor=discovery_executor
+            validation_executor,
+            discovery_executor=discovery_executor,
+            language=language,
         )
         if verification_pool is not None:
             # 并行池同样要守住「发现≠校验」:池内任何 session 复用发现 executor
@@ -208,12 +217,22 @@ class FindingsPipeline:
 
     async def _validate_one(self, finding: Finding) -> Finding:
         """校验单条:有池走多数表决(异常降级单会话),无池走单会话校验。"""
+        # Consensus and semantic memory can add context, but never manufacture
+        # the executed request evidence required for a confirmed result.
+        if not has_confirmable_provenance(finding):
+            return replace(
+                finding,
+                result=FindingResult.VALIDATION_INCONCLUSIVE,
+                reason=_REASON_PROVENANCE_MISSING,
+            )
         if self._pool is None:
             return await self._validator.validate(finding)
         try:
             candidate = _finding_to_pool_candidate(finding)
-            # 池是同步阻塞接口(内部线程池),放执行器线程跑,不阻塞事件循环。
-            report = await asyncio.to_thread(self._pool.verify_finding, candidate)
+            # The pool already owns its worker threads. Running it directly
+            # avoids a nested default-executor thread that can deadlock in
+            # constrained runtimes while preserving per-session parallelism.
+            report = self._pool.verify_finding(candidate)
         except Exception:
             # 池不可用(构造/执行异常)→ 降级回单会话校验,不让 finding 漏校验。
             return await self._validator.validate(finding)
@@ -226,7 +245,10 @@ class FindingsPipeline:
         ``validation_system_error``、记入失败清单,流水线继续;
         ``ValidatorError``(配置级硬约束)直接上抛。
         """
-        loaded = [Finding.from_dict(item) for item in self.workspace.load_findings()]
+        loaded = [
+            _scope_gate(self.workspace, Finding.from_dict(item))
+            for item in self.workspace.load_findings()
+        ]
         unique = dedup(loaded)
 
         out: list[Finding] = []
@@ -234,6 +256,15 @@ class FindingsPipeline:
         validated = 0
         skipped = 0
         for finding in unique:
+            if (
+                finding.result is FindingResult.CONFIRMED
+                and not has_confirmable_provenance(finding)
+            ):
+                finding = replace(
+                    finding,
+                    result=FindingResult.VALIDATION_INCONCLUSIVE,
+                    reason=_REASON_PROVENANCE_MISSING,
+                )
             if finding.result in TERMINAL_RESULTS:
                 out.append(finding)
                 skipped += 1
@@ -307,3 +338,20 @@ def make_report_handler(pipeline: FindingsPipeline) -> StageHandler:
         )
 
     return handler
+_REASON_PROVENANCE_MISSING = "missing request provenance"
+
+
+def _scope_gate(workspace: Workspace, finding: Finding) -> Finding:
+    """Reclassify web findings outside scope before terminal-state handling."""
+    is_web = finding.service.strip().lower() in {"http", "https", "web"} or finding.resource.startswith(
+        ("http://", "https://")
+    )
+    if not is_web or workspace.scope.is_allowed(finding.resource):
+        return finding
+    return replace(
+        finding,
+        result=FindingResult.FALSE_POSITIVE,
+        severity=classify(finding, None),
+        reason="OUT_OF_SCOPE/CONTAMINATED",
+        invalid_reasons=("INVALID", "OUT_OF_SCOPE", "CONTAMINATED"),
+    )
