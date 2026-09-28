@@ -1,0 +1,22 @@
+{"target_kind": "动态SQL拼接接口", "invariant": "用户输入不直接进入SQL语句的字符串拼接", "violation": "参数值未经参数化直接拼入WHERE/ORDER BY子句", "verify_method": "单引号闭合+布尔盲注对照(AND 1=1 vs AND 1=2 响应差异)", "confidence_prior": 0.8}
+{"target_kind": "数据库错误回显页面", "invariant": "数据库报错信息不回显给终端用户", "violation": "输入引号触发SQL语法错误且错误页含数据库类型/语句片段", "verify_method": "构造语法错误载荷,断言响应含DBMS指纹(You have an error in your SQL syntax)", "confidence_prior": 0.7}
+{"target_kind": "宽字节注入场景(GBK)", "invariant": "多字节字符集转义不被绕过", "violation": "0xbf27类载荷吃掉转义反斜杠使引号逃逸", "verify_method": "提交%bf%27观察引号是否闭合生效", "confidence_prior": 0.6}
+{"target_kind": "用户内容回显点", "invariant": "回显内容按上下文正确编码(HTML/JS/URL)", "violation": "HTML实体未转义的<script>注入存储或反射", "verify_method": "注入唯一标记+无害payload(报警框/console.log)验证执行", "confidence_prior": 0.75}
+{"target_kind": "DOM sink 点", "invariant": "innerHTML/document.write 不接收用户可控数据", "violation": "location.hash/querySource 经 sink 写入DOM", "verify_method": "URL参数注入标记,断言DOM出现未转义节点", "confidence_prior": 0.7}
+{"target_kind": "富文本过滤旁路", "invariant": "标签白名单过滤不可被编码绕过", "violation": "大小写/嵌套/编码变体(<scr<script>ipt>)穿透过滤器", "verify_method": "编码变体矩阵注入,断言原标签在DOM重建后出现", "confidence_prior": 0.6}
+{"target_kind": "服务端取数参数", "invariant": "服务端出网目标经白名单校验", "violation": "URL参数直接作为服务端请求目标且无白名单", "verify_method": "指向受控回连端点,断言出网请求到达", "confidence_prior": 0.8}
+{"target_kind": "内网探测面", "invariant": "云元数据/内网端点对服务端请求不可达", "violation": "169.254.169.254 IMDS/127.0.0.1 内网服务可被URL参数触达", "verify_method": "请求元数据端点,断言响应含云凭证特征字段", "confidence_prior": 0.7}
+{"target_kind": "系统命令调用点", "invariant": "用户输入不进入shell拼接", "violation": ";/$()`/|| 分隔符直接追加进exec/system参数", "verify_method": "分隔符+无害命令(id/whoami)断言输出特征串", "confidence_prior": 0.8}
+{"target_kind": "参数型命令注入", "invariant": "子进程参数走数组传递", "violation": "以空格拼接命令行使参数可注入新命令", "verify_method": "注入额外参数观察进程行为变化", "confidence_prior": 0.65}
+{"target_kind": "上传接口", "invariant": "上传文件名/类型不可控存储路径与执行属性", "violation": "原始文件名保留+扩展名解析进可执行目录", "verify_method": "上传双扩展/畸形扩展文件,断言可经Web访问执行", "confidence_prior": 0.7}
+{"target_kind": "内容类型校验点", "invariant": "类型校验基于文件内容(magic bytes)而非扩展名/Content-Type", "violation": "伪造Content-Type即可上传可执行内容", "verify_method": "改头不改内容的上传对照,断言存储差异", "confidence_prior": 0.65}
+{"target_kind": "文件读取接口", "invariant": "路径拼接前规范化并校验根目录约束", "violation": "../序列逃逸出允许目录读取任意文件", "verify_method": "../../etc/passwd 类载荷断言已知文件内容特征", "confidence_prior": 0.8}
+{"target_kind": "压缩包解压点", "invariant": "解压目标路径不跨越安全根", "violation": "Zip Slip:压缩条目名含../写出到解压目录外", "verify_method": "构造../条目的zip,断言目标文件被写出", "confidence_prior": 0.7}
+{"target_kind": "序列化数据入口", "invariant": "不可信数据不做原生反序列化", "violation": "Java/PHP/.NET序列化对象直接unserialize", "verify_method": "植入无害gadget链(延时/DNS外连)断言触发", "confidence_prior": 0.75}
+{"target_kind": "反序列化类型白名单", "invariant": "允许反序列化的类名单封闭", "violation": "白名单外类可经gadget链被实例化", "verify_method": "非白名单类构造载荷,断言类加载行为", "confidence_prior": 0.65}
+{"target_kind": "错误页面/响应头", "invariant": "实现细节(框架版本/路径/栈)不回显", "violation": "异常页含堆栈/绝对路径/中间件版本", "verify_method": "触发异常请求,断言响应含框架或路径特征", "confidence_prior": 0.7}
+{"target_kind": "调试与备份端点", "invariant": "调试开关与备份文件不在生产暴露", "violation": ".git/.env/.bak/swp可经Web直接访问", "verify_method": "常见路径字典探测,断言200+内容特征", "confidence_prior": 0.75}
+{"target_kind": "模板渲染点", "invariant": "用户输入仅作为数据不作为模板语法", "violation": "{{}}/${}/<%%>等定界符被服务端模板引擎求值", "verify_method": "注入数学表达式(7*7)断言49回显", "confidence_prior": 0.75}
+{"target_kind": "状态变更操作", "invariant": "非幂等请求强制CSRF token/Origin校验", "violation": "跨站表单可直接提交变更类操作", "verify_method": "构造跨站提交,断言无token仍生效", "confidence_prior": 0.7}
+{"target_kind": "XML解析入口", "invariant": "解析器禁外部实体与DTD", "violation": "DOCTYPE声明可注入外部实体读取本地文件/SSRF", "verify_method": "file:///etc/passwd外部实体断言内容回显或外连", "confidence_prior": 0.75}
+{"target_kind": "跳转参数", "invariant": "跳转目标经白名单/相对路径校验", "violation": "用户可控参数直接进Location头", "verify_method": "注入外部域,断言30x跳转到外部", "confidence_prior": 0.7}
