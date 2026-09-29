@@ -1,5 +1,22 @@
 # CHANGELOG — cain-agent
 
+## 2026-09-18~29 · Phase 5-A 验证纪律强化收官(09-23 组合回归 + 09-29 5-B1 补记)
+
+- **A1 覆盖率退出门**(09-18,3f8f230):`gates.py` 纯函数三维度校验,
+  gate 落盘 `recon/gate.json`,blocked 时 test 降级 dry-run;CLI
+  `--coverage-gate` 显式开启(缺省零变化)
+- **A2 可重放证据包**(09-18,167becb):`EvidenceReplay` 只收方法/URL/
+  名称,凭证值形态构造即拒;report.md 增「重放清单」节
+- **A3 confirm 副作用门**(09-20,244d421):`FindingResult` 第五状态
+  `LIKELY`(多数 confirmed 但缺副作用证据降档);`side_effect_gate`
+  显式开关;聚合同步五态计数
+- **A4 验证分歧呈现**(09-19,8426a35):验证池少数派理由 redact+截断
+  入库,conclusion `model_dissent`,report.md「⚠ 分歧意见」子块
+- **组合回归**(09-23,7f544a7):gate×replay×dissent×likely 链式语义
+  +9 例;**5-B1 patterns 蒸馏**(09-29,5e04b55):`skills/patterns.jsonl`
+  22 条五字段假设 + `patternlib.py` 校验器(Phase 5-B 开启)
+- 基线演进 1180→1262 passed(+82 例);全部缺省零变化,显式开启生效
+
 ## 2026-09-07 · BAC 判定核心最小切片（09-08 补记）
 
 - `f9e3193` / `53a0737`：新增 `web/bac_core.py` 请求对、响应差异与纯函数判定；覆盖水平/垂直越权候选、MBAC 依赖页变化与相似度分档。
