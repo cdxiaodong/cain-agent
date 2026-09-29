@@ -111,7 +111,7 @@
 
 ### 5-B · 上下文工程
 
-- [ ] B1 patterns 蒸馏格式 + 首批:`skills/patterns.jsonl` 五字段假设
+- [x] B1 patterns 蒸馏格式 + 首批(2026-09-29 合入 c9310e8:22 条五字段 JSONL + patternlib.py 校验器,20 例):`skills/patterns.jsonl` 五字段假设
   (target_kind/invariant/violation/verify_method/confidence_prior)+
   校验器 `src/cain_agent/patternlib.py`;从既有 web 技能蒸馏 ≥20 条
 - [ ] B2 Scout 假设生成:recon→test 间纯规则匹配(零 token)产定点
