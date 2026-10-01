@@ -48,6 +48,7 @@ from cain_agent.findings import (
 from cain_agent.gates import CoverageConfig, check_coverage
 from cain_agent.orchestrator import StageContext, StageHandler, StageResult
 from cain_agent.redact import redact, redact_dict
+from cain_agent.scout import generate_hypotheses, render_hypotheses
 from cain_agent.validator import UNTRUSTED_CLOSE, UNTRUSTED_OPEN
 from cain_agent.workspace import WorkspaceCorruptError
 
@@ -74,6 +75,9 @@ TEST_RAW_FILE = "test/test-output.txt"
 """test 阶段 Agent 原始输出(脱敏后)落盘路径。"""
 
 _DEFAULT_SKILLS_ROOT = Path(__file__).resolve().parents[2] / "skills"
+
+_DEFAULT_PATTERNS_PATH = str(_DEFAULT_SKILLS_ROOT / "patterns.jsonl")
+"""patterns 库默认路径(Phase 5-B2 Scout;经 patternlib 校验加载)。"""
 """默认技能库根目录(仓库根下的 skills/);测试可注入临时目录。"""
 
 _TRUNCATION_MARK = "…"
@@ -501,7 +505,13 @@ def _read_recon_gate(ctx: StageContext) -> str:
     return "pass"
 
 
-def make_test_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> StageHandler:
+def make_test_handler(
+    executor: SDKExecutor,
+    skill_loader: SkillLoader,
+    *,
+    scout: bool = False,
+    patterns_path: str | None = None,
+) -> StageHandler:
     """test 阶段真实 handler:读 recon 产物 → L1 探测 → Finding 落 findings.json。
 
     产物(重跑幂等):
@@ -537,7 +547,17 @@ def make_test_handler(executor: SDKExecutor, skill_loader: SkillLoader) -> Stage
                 endpoints = loaded
         assets = ctx.workspace.load_assets()
 
-        prompt = _build_test_prompt(ctx, skill_loader.render("test"), endpoints, assets)
+        skills_text = skill_loader.render("test")
+        if scout:
+            # Phase 5-B2:零 token 规则匹配产定点假设,追加注入(不替代技能,
+            # 缺省 off 零变化;坏 patterns 库立即抛错不静默降级)
+            hypotheses = generate_hypotheses(
+                endpoints, patterns_path=patterns_path or _DEFAULT_PATTERNS_PATH
+            )
+            rendered = render_hypotheses(hypotheses)
+            if rendered:
+                skills_text = skills_text + "\n\n" + rendered
+        prompt = _build_test_prompt(ctx, skills_text, endpoints, assets)
         result = _run_sync(executor, prompt)
 
         # 脱敏接线:Agent 输出进 workspace 前一律过 redact(§3.2)。
