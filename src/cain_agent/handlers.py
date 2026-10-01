@@ -96,6 +96,8 @@ class Skill:
     phase: str
     path: str
     content: str
+    validation_seed: tuple[dict[str, str], ...] = ()
+    """Phase 5-B3 质量门:已知漏洞样例集(输入+预期信号);空=未提供。"""
 
 
 def _parse_frontmatter(text: str) -> dict[str, Any] | None:
@@ -110,6 +112,43 @@ def _parse_frontmatter(text: str) -> dict[str, Any] | None:
     except yaml.YAMLError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _parse_validation_seed(
+    raw: object, path: Path
+) -> tuple[tuple[dict[str, str], ...], str | None]:
+    """解析并静态自洽校验 validation_seed(Phase 5-B3,零 LLM)。
+
+    结构:非空列表,每项含非空 ``input`` 与 ``expected_signal`` 字符串;
+    自洽(启发式):expected_signal 的词根应出现在技能正文中——
+    样例信号技能自身写不出即不自洽。缺 seed 返回 ((), None)(可选字段);
+    结构坏返回 ((), issue)。
+    """
+    if raw is None:
+        return (), None
+    if not isinstance(raw, list) or not raw:
+        return (), f"技能 validation_seed 结构非法(须非空列表): {path}"
+    seed: list[dict[str, str]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            return (), f"技能 validation_seed[{index}] 须为对象: {path}"
+        inp = item.get("input")
+        sig = item.get("expected_signal")
+        if not isinstance(inp, str) or not inp.strip():
+            return (), f"技能 validation_seed[{index}].input 须非空字符串: {path}"
+        if not isinstance(sig, str) or not sig.strip():
+            return (), f"技能 validation_seed[{index}].expected_signal 须非空字符串: {path}"
+        seed.append({"input": inp.strip(), "expected_signal": sig.strip()})
+    return tuple(seed), None
+
+
+def _seed_self_consistent(seed: tuple[dict[str, str], ...], content: str) -> bool:
+    """样例信号与技能**正文**的静态自洽(词根包含,启发式)。
+
+    只检正文:frontmatter 自身含 seed 定义,整文匹配会自证(测试抓出)。
+    """
+    body = content.split("\n---\n", 1)[-1].lower()
+    return all(entry["expected_signal"].lower()[:12] in body for entry in seed)
 
 
 class SkillLoader:
@@ -142,12 +181,21 @@ class SkillLoader:
             if frontmatter.get("phase") != phase:
                 continue
             name = frontmatter.get("name")
+            raw_seed = frontmatter.get("validation_seed")
+            seed, seed_issue = _parse_validation_seed(raw_seed, path)
+            if seed_issue:
+                self.issues.append(seed_issue)
+            elif seed and not _seed_self_consistent(seed, text):
+                self.issues.append(
+                    f"技能 validation_seed 不自洽(expected_signal 未见于正文): {path}"
+                )
             skills.append(
                 Skill(
                     name=name if isinstance(name, str) and name else path.parent.name,
                     phase=phase,
                     path=path.relative_to(self.skills_root).as_posix(),
                     content=text,
+                    validation_seed=seed,
                 )
             )
         if not skills:

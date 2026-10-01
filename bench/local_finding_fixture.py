@@ -177,3 +177,27 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# -- Phase 5-B3:seed 复现跑分入口(占位,不实跑) ------------------------------
+
+def run_seed_reproduction(skills_root: str = "skills") -> dict[str, object]:
+    """统计各技能 validation_seed 覆盖情况(占位入口,不执行任何检测)。
+
+    实跑(样例输入→技能检测逻辑→比对 expected_signal)需要 fixture 场景
+    接线,留 Phase 5-C Scout 通道深化后一并落地;当前只做结构盘点。
+    """
+    from cain_agent.handlers import SkillLoader
+
+    loader = SkillLoader(skills_root)
+    stats: dict[str, object] = {"with_seed": 0, "without_seed": 0, "skills": []}
+    names: list[str] = []
+    for phase in ("recon", "test", "framework"):
+        for skill in loader.load(phase):
+            names.append(skill.name)
+            if skill.validation_seed:
+                stats["with_seed"] = int(stats["with_seed"]) + 1
+            else:
+                stats["without_seed"] = int(stats["without_seed"]) + 1
+    stats["skills"] = names
+    return stats
