@@ -159,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="initialize workspace + scope and print execution plan, don't start Agent",
     )
     run.add_argument(
+        "--scout",
+        action="store_true",
+        help="开启 Scout 假设生成(Phase 5-B2):recon 产物×patterns 纯规则"
+        "匹配产定点假设注入 test 阶段(缺省关闭,零 token)",
+    )
+    run.add_argument(
         "--coverage-gate",
         action="store_true",
         help="开启 recon 覆盖率退出门:端点/探测不足时 test 阶段降级 dry-run"
@@ -442,7 +448,9 @@ def _build_handlers(
     recon_handler = make_recon_handler(
         recon_executor, skill_loader, coverage_gate=args.coverage_gate
     )
-    test_handler = make_test_handler(test_executor, skill_loader)
+    test_handler = make_test_handler(
+        test_executor, skill_loader, scout=args.scout
+    )
     try:
         orchestration = _build_orchestration(args, workspace)
         pipeline = FindingsPipeline(
