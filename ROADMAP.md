@@ -116,7 +116,7 @@
   校验器 `src/cain_agent/patternlib.py`;从既有 web 技能蒸馏 ≥20 条
 - [x] B2 Scout 假设生成(2026-10-01 合入 c345255:零token三件套,--scout 缺省off零变化,假设清单追加不替代,15例):recon→test 间纯规则匹配(零 token)产定点
   假设清单替代全量技能注入;`--scout off` 回落旧行为(缺省零变化)
-- [ ] B3 技能 validation_seed 质量门:技能 frontmatter 增已知漏洞
+- [x] B3 技能 validation_seed 质量门(2026-10-01 夜班合入 41b44aa:结构校验+正文自洽+bench盘点入口,15例;先复现后修抓出自证缺陷):技能 frontmatter 增已知漏洞
   样例集,加载时校验 seed 自洽,缺失/空章节进 issues;bench 增
   seed 复现跑分入口
 
