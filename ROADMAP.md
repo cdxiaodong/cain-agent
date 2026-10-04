@@ -122,7 +122,7 @@
 
 ### 5-C · patchdiff 变体挖掘(依赖 5-B 格式)
 
-- [ ] C1 补丁 diff 解析层:`src/cain_agent/patchdiff/parser.py`,
+- [x] C1 补丁 diff 解析层(2026-10-04 夜班合入 b2c3dbf:结构化变更集15例,两真bug先复现后修):`src/cain_agent/patchdiff/parser.py`,
   unified diff → 结构化变更集(签名变化/新增校验/删除路径),纯函数
 - [ ] C2 根因谓词蒸馏:变更集 → invariant 谓词(复用 B1 五字段格式),
   LLM 辅助 prompt 模板 + 确定性校验(谓词须引用 diff 实际符号)
