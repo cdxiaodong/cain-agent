@@ -159,8 +159,8 @@ def test_recon_prompt_contains_goal_scope_and_no_expansion(ws: Workspace) -> Non
     # scope 约束复述:原文 + 结构化摘要都在
     assert "example.com" in prompt and "admin.example.com" in prompt
     assert "out_of_scope" in prompt
-    # recon 阶段无已加载技能 → 显式降级说明;web 测试技能不得混入
-    assert "未加载到技能" in prompt
+    # recon 阶段已加载 webpack-js 技能(10-06 用户指令);test 阶段技能不得混入
+    assert "Webpack" in prompt and "前端 JS 信息收集" in prompt
     assert "SQL 注入测试技能" not in prompt
 
 
