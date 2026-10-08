@@ -4,6 +4,11 @@
 变体搜索是最高产的可复制流水线。本包 C1 为纯函数解析地基。
 """
 
+from cain_agent.patchdiff.distill import (
+    PredicateError,
+    build_distill_prompt,
+    validate_predicate,
+)
 from cain_agent.patchdiff.parser import (
     ChangeSet,
     Hunk,
@@ -11,4 +16,12 @@ from cain_agent.patchdiff.parser import (
     parse_unified_diff,
 )
 
-__all__ = ["ChangeSet", "Hunk", "PatchDiffError", "parse_unified_diff"]
+__all__ = [
+    "ChangeSet",
+    "Hunk",
+    "PatchDiffError",
+    "PredicateError",
+    "build_distill_prompt",
+    "parse_unified_diff",
+    "validate_predicate",
+]
